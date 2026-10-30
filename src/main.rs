@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0
 
+// No console window next to the app on Windows.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use crate::flags::flags;
 use std::sync::Mutex;
 
@@ -10,10 +13,12 @@ mod i18n;
 mod icons;
 mod images;
 mod key_binds;
+#[cfg(unix)]
 mod system_icons;
 mod themes;
 
 fn main() -> cosmic::iced::Result {
+    #[cfg(unix)]
     system_icons::install();
 
     // Get the system's preferred languages.

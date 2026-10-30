@@ -740,7 +740,6 @@ impl cosmic::Application for AppModel {
                         return self.reveal_selected();
                     }
                     DetailsInput::PlayAudio(path) => {
-                        #[cfg(unix)]
                         play_audio_file(&path, f32::from(self.config.cry_volume) / 100.0);
                     }
                     DetailsInput::ToggleShiny => details.shiny = !details.shiny,
