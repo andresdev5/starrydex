@@ -51,6 +51,26 @@ data-info = Data: { $pokemon } Pokémon, { $species } species, { $moves } moves 
 
 home-pokemon = Pokémon
 home-types = Types
+home-items = Items
+
+## Main page: items
+
+items-search-placeholder = Search items by name
+items-all-pockets = All pockets
+items-range = { $start }–{ $end } of { $total } items
+items-none = No items
+items-no-results = No items found
+items-no-results-hint = Try another search or pick another pocket.
+item-details = Item
+item-info = Information
+item-pocket = Pocket
+item-category = Category
+item-cost = Price
+item-cost-value = { $cost } ₽
+item-cost-none = Not sold
+item-description = Description
+item-effect = Effect
+item-held-by = Held by wild Pokémon
 
 ## Main page: type chart
 

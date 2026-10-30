@@ -51,6 +51,26 @@ data-info = Datos: { $pokemon } Pokémon, { $species } especies, { $moves } movi
 
 home-pokemon = Pokémon
 home-types = Tipos
+home-items = Ítems
+
+## Main page: items
+
+items-search-placeholder = Buscar ítems por nombre
+items-all-pockets = Todos los bolsillos
+items-range = { $start }–{ $end } de { $total } ítems
+items-none = Ningún ítem
+items-no-results = No se encontró ningún ítem
+items-no-results-hint = Prueba otra búsqueda o elige otro bolsillo.
+item-details = Ítem
+item-info = Información
+item-pocket = Bolsillo
+item-category = Categoría
+item-cost = Precio
+item-cost-value = { $cost } ₽
+item-cost-none = No se vende
+item-description = Descripción
+item-effect = Efecto
+item-held-by = Lo llevan Pokémon salvajes
 
 ## Main page: type chart
 

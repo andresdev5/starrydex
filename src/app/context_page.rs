@@ -17,6 +17,8 @@ pub enum ContextPage {
     Settings,
     /// Pokémon Filtering Options [`ContextPage`] of the application
     FiltersPage,
+    /// Details of the item selected in the items section
+    ItemDetails,
 }
 
 impl ContextPage {
@@ -46,6 +48,16 @@ impl ContextPage {
                     Message::ToggleContextPage(ContextPage::FiltersPage),
                 )
                 .title(fl!("filters-page"))
+            }
+            ContextPage::ItemDetails => {
+                let State::Ready(ready) = &app_model.state else {
+                    return None;
+                };
+                context_drawer::context_drawer(
+                    crate::app::pages::items::details(ready),
+                    Message::ToggleContextPage(ContextPage::ItemDetails),
+                )
+                .title(fl!("item-details"))
             }
         })
     }

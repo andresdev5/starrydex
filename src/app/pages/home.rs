@@ -27,10 +27,11 @@ pub enum HomeSection {
     #[default]
     Pokemon,
     Types,
+    Items,
 }
 
 impl HomeSection {
-    pub const ALL: &'static [Self] = &[Self::Pokemon, Self::Types];
+    pub const ALL: &'static [Self] = &[Self::Pokemon, Self::Types, Self::Items];
 }
 
 impl Label for HomeSection {
@@ -38,6 +39,7 @@ impl Label for HomeSection {
         match self {
             Self::Pokemon => fl!("home-pokemon"),
             Self::Types => fl!("home-types"),
+            Self::Items => fl!("home-items"),
         }
     }
 }
@@ -52,12 +54,13 @@ pub fn view<'a>(
     let content = match section {
         HomeSection::Pokemon => pokemon_list(app, ready),
         HomeSection::Types => crate::app::pages::types::view(ready),
+        HomeSection::Items => crate::app::pages::items::view(app, ready),
     };
     widget::column::with_children(vec![
         container(
             widget::segmented_control::horizontal(sections)
                 .on_activate(Message::HomeSection)
-                .width(Length::Fixed(320.0)),
+                .width(Length::Fixed(420.0)),
         )
         .width(Length::Fill)
         .align_x(Alignment::Center)

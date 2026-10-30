@@ -57,6 +57,10 @@ impl ArchivedPokedex {
         find_by_id(&self.items, id, |i| i.id.to_native())
     }
 
+    pub fn item_pocket(&self, id: u32) -> Option<&ArchivedNamed> {
+        find_by_id(&self.item_pockets, id, |p| p.id.to_native())
+    }
+
     pub fn evolution_chain(&self, id: u32) -> Option<&ArchivedEvolutionChain> {
         find_by_id(&self.evolution_chains, id, |c| c.id.to_native())
     }

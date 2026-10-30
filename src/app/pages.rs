@@ -4,5 +4,6 @@ pub mod common;
 pub mod details;
 pub mod filters;
 pub mod home;
+pub mod items;
 pub mod settings;
 pub mod types;

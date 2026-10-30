@@ -20,6 +20,7 @@ use crate::app::context_page::ContextPage;
 use crate::app::core::{ListQuery, StarryCore};
 use crate::app::pages::details::{DetailTab, Details};
 use crate::app::pages::home::HomeSection;
+use crate::app::pages::items::ItemList;
 use crate::app::utils::presentation::{Label, data_lang};
 use crate::app::utils::{
     Category, Filters, PaginationAction, SortBy, play_audio_file, remove_dir_contents,
@@ -98,6 +99,8 @@ pub struct Ready {
     pub list_scroll: AbsoluteOffset,
     /// Type whose matchups are shown on the type chart page
     pub selected_type: Option<PokemonType>,
+    /// Items section
+    pub items: ItemList,
 }
 
 /// Messages emitted by the application and its widgets.
@@ -137,6 +140,19 @@ pub enum Message {
     List(ListInput),
     /// Input on the Filters [`ContextPage`]
     Filters(FiltersInput),
+    /// Input on the items section
+    Items(ItemsInput),
+}
+
+/// Some user interaction that happens on the items section
+#[derive(Debug, Clone)]
+pub enum ItemsInput {
+    Search(String),
+    /// Index of the picked entry of the pocket dropdown
+    Pocket(usize),
+    Page(PaginationAction),
+    /// Show the item with the given id in the context drawer
+    Open(u32),
 }
 
 /// Some user interaction that happens on the Pokémon list
@@ -395,6 +411,7 @@ impl cosmic::Application for AppModel {
                 Task::none()
             }
             Message::CoreLoaded(Ok(core)) => {
+                let items = ItemList::new(&core);
                 self.state = State::Ready(Box::new(Ready {
                     core,
                     results: Vec::new(),
@@ -406,6 +423,7 @@ impl cosmic::Application for AppModel {
                     details: None,
                     list_scroll: AbsoluteOffset::default(),
                     selected_type: None,
+                    items,
                 }));
                 self.refresh_results();
                 Task::none()
@@ -425,7 +443,10 @@ impl cosmic::Application for AppModel {
                     Some(_) => {}
                     None => ready.details = Some(Details::new(index, ready.core.dex())),
                 }
-                if self.context_page == ContextPage::FiltersPage {
+                if matches!(
+                    self.context_page,
+                    ContextPage::FiltersPage | ContextPage::ItemDetails
+                ) {
                     self.core.window.show_context = false;
                 }
                 Task::none()
@@ -563,6 +584,42 @@ impl cosmic::Application for AppModel {
                 self.refresh_results();
                 Task::none()
             }
+            Message::Items(input) => {
+                let State::Ready(ready) = &mut self.state else {
+                    return Task::none();
+                };
+                let list = &mut ready.items;
+                match input {
+                    ItemsInput::Search(value) => {
+                        list.search = value;
+                        list.refresh(&ready.core);
+                    }
+                    ItemsInput::Pocket(index) => {
+                        list.pocket = list.pocket_ids.get(index).copied().flatten();
+                        list.refresh(&ready.core);
+                    }
+                    ItemsInput::Page(action) => {
+                        let pages = page_count(list.results.len(), self.config.pokemon_per_page);
+                        list.page = match action {
+                            PaginationAction::Next => (list.page + 1).min(pages - 1),
+                            PaginationAction::Back => list.page.saturating_sub(1),
+                        };
+                        return scrollable::scroll_to(
+                            pages::items::ITEMS_SCROLL_ID.into(),
+                            AbsoluteOffset {
+                                x: None,
+                                y: Some(0.0),
+                            },
+                        );
+                    }
+                    ItemsInput::Open(id) => {
+                        list.selected = Some(id);
+                        self.context_page = ContextPage::ItemDetails;
+                        self.core.window.show_context = true;
+                    }
+                }
+                Task::none()
+            }
             Message::Filters(input) => {
                 let State::Ready(ready) = &mut self.state else {
                     return Task::none();
@@ -641,6 +698,16 @@ impl AppModel {
                 if !in_details && self.active_section() == HomeSection::Types =>
             {
                 Task::none()
+            }
+            Hotkey::ArrowLeft | Hotkey::ArrowRight
+                if !in_details && self.active_section() == HomeSection::Items =>
+            {
+                let direction = if matches!(hotkey, Hotkey::ArrowLeft) {
+                    PaginationAction::Back
+                } else {
+                    PaginationAction::Next
+                };
+                self.update(Message::Items(ItemsInput::Page(direction)))
             }
             Hotkey::ArrowLeft | Hotkey::ArrowRight => {
                 let direction = if matches!(hotkey, Hotkey::ArrowLeft) {

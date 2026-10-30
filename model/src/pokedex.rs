@@ -13,7 +13,7 @@ use crate::{
 };
 
 /// Bump whenever the layout of any archived type changes.
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 
 /// Root of the archive.
 #[derive(Archive, Serialize, Deserialize, Debug, Default)]
@@ -30,8 +30,10 @@ pub struct Pokedex {
     pub moves: Vec<Move>,
     /// Sorted by id.
     pub abilities: Vec<Ability>,
-    /// Only the items referenced by Pokémon data (held items, evolution items). Sorted by id.
+    /// Every item. Sorted by id.
     pub items: Vec<Item>,
+    /// Bag pockets items are sorted into (medicine, Poké Balls, berries...). Sorted by id.
+    pub item_pockets: Vec<Named>,
     /// Sorted by id.
     pub evolution_chains: Vec<EvolutionChain>,
     /// Sorted by id.
@@ -333,6 +335,8 @@ pub struct Item {
     pub name: String,
     pub display: Text,
     pub category: String,
+    /// Bag pocket, see [`Pokedex::item_pockets`].
+    pub pocket_id: u32,
     pub cost: Option<u32>,
     pub short_effect: Text,
     pub flavor: Text,

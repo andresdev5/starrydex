@@ -7,7 +7,7 @@ use rustemon::model::{
     encounters::{EncounterConditionValue, EncounterMethod},
     evolution::{ChainLink, EvolutionChain, EvolutionDetail, EvolutionTrigger},
     games::{Pokedex, Version, VersionGroup},
-    items::Item,
+    items::{Item, ItemCategory, ItemPocket},
     locations::{Location, LocationArea, Region},
     moves::{Move, MoveTarget},
     pokemon::{
@@ -49,6 +49,8 @@ pub struct Raw {
     location_areas: BTreeMap<i64, LocationArea>,
     locations: BTreeMap<i64, Location>,
     items: BTreeMap<i64, Item>,
+    item_categories: BTreeMap<i64, ItemCategory>,
+    item_pockets: BTreeMap<i64, ItemPocket>,
 }
 
 /// A file to download for the sprite/cry archives.
@@ -120,6 +122,8 @@ pub async fn fetch(client: &Client, raw_api: &RawApi, concurrency: usize) -> Raw
     table!(colors, pokemon::pokemon_color, "colors");
     table!(shapes, pokemon::pokemon_shape, "shapes");
     table!(habitats, pokemon::pokemon_habitat, "habitats");
+    table!(item_categories, items::item_category, "item categories");
+    table!(item_pockets, items::item_pocket, "item pockets");
     // Only the 18 battle types (ids above 10000 are "shadow"/"unknown"; 19 is "stellar").
     raw.types = fetch_many("types", 1..=18, n, |id| pokemon::type_::get_by_id(id, c)).await;
 
@@ -216,11 +220,14 @@ pub async fn fetch(client: &Client, raw_api: &RawApi, concurrency: usize) -> Raw
     .await;
 
     println!("Fetching items");
-    let mut item_ids: BTreeSet<i64> = raw
-        .pokemon
-        .values()
-        .flat_map(|p| p.held_items.iter().filter_map(|h| id_of(&h.item.url)))
+    let mut item_ids: BTreeSet<i64> = ids(items::item::get_all_entries(c).await, "items")
+        .into_iter()
         .collect();
+    item_ids.extend(
+        raw.pokemon
+            .values()
+            .flat_map(|p| p.held_items.iter().filter_map(|h| id_of(&h.item.url))),
+    );
     for chain in raw.chains.values() {
         item_ids.extend(chain.baby_trigger_item.as_ref().and_then(|i| id_of(&i.url)));
         for detail in chain_details(&chain.chain) {
@@ -450,6 +457,11 @@ pub fn build(raw: &Raw) -> (model::Pokedex, AssetPlan) {
         })
         .collect();
 
+    let pocket_of_category: HashMap<String, u32> = raw
+        .item_categories
+        .values()
+        .map(|c| (c.name.clone(), id32(&c.pocket.url)))
+        .collect();
     let items: Vec<model::Item> = raw
         .items
         .values()
@@ -469,6 +481,10 @@ pub fn build(raw: &Raw) -> (model::Pokedex, AssetPlan) {
                 name: i.name.clone(),
                 display: names_of(&i.names, &i.name),
                 category: title_case(&i.category.name),
+                pocket_id: pocket_of_category
+                    .get(&i.category.name)
+                    .copied()
+                    .unwrap_or_default(),
                 cost: i.cost.filter(|c| *c > 0).map(u32s),
                 short_effect: text_from(&i.effect_entries, |e| &e.language, |e| &e.short_effect),
                 flavor: latest_text_from(
@@ -881,6 +897,11 @@ pub fn build(raw: &Raw) -> (model::Pokedex, AssetPlan) {
         moves,
         abilities,
         items,
+        item_pockets: raw
+            .item_pockets
+            .values()
+            .map(|p| named(p.id, &p.name, &p.names))
+            .collect(),
         evolution_chains,
         versions,
         version_groups,

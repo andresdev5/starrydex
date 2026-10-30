@@ -17,7 +17,8 @@ use anywho::{Error, anywho};
 use memmap2::{Mmap, MmapOptions};
 use rkyv::rancor;
 use starrydex_model::{
-    ArchivedPokedex, ArchivedPokemon, ArchivedSpecies, FORMAT_VERSION, Lang, SpriteKind,
+    ArchivedItem, ArchivedPokedex, ArchivedPokemon, ArchivedSpecies, FORMAT_VERSION, Lang,
+    SpriteKind, item_sprite_rel_path,
 };
 
 use crate::app::utils::filters::{Category, Filters, SortBy};
@@ -25,7 +26,7 @@ use crate::config::TypeFilteringMode;
 
 pub const APP_ID: &str = "dev.mariinkys.StarryDex";
 /// Bump to force re-extraction of the bundled data on the users' machines.
-pub const CACHE_VERSION: u32 = 12;
+pub const CACHE_VERSION: u32 = 13;
 
 const BUNDLED_POKEDEX: &[u8] = include_bytes!("../../assets/pokedex.bin.gz");
 const BUNDLED_SPRITES: &[u8] = include_bytes!("../../assets/sprites.tar.gz");
@@ -256,6 +257,33 @@ impl StarryCore {
         if query.descending {
             results.reverse();
         }
+        results
+    }
+
+    /// Absolute path of an item icon, if the item has one.
+    pub fn item_sprite(&self, item: &ArchivedItem) -> Option<PathBuf> {
+        item.has_sprite
+            .then(|| self.asset(&item_sprite_rel_path(item.name.as_str())))
+    }
+
+    /// Items whose name matches `search` (any language shown or English) inside the given
+    /// pocket, sorted by name. Returns indices into [`ArchivedPokedex::items`].
+    pub fn item_query(&self, search: &str, pocket: Option<u32>, lang: Lang) -> Vec<u32> {
+        let items = &self.dex().items;
+        let needle = fold(search.trim());
+        let mut results: Vec<u32> = items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| pocket.is_none_or(|p| item.pocket_id.to_native() == p))
+            .filter(|(_, item)| {
+                needle.is_empty()
+                    || fold(item.display.get(lang)).contains(&needle)
+                    || fold(&item.display.en).contains(&needle)
+                    || item.name.as_str().replace('-', " ").contains(&needle)
+            })
+            .map(|(index, _)| index as u32)
+            .collect();
+        results.sort_by_cached_key(|&i| fold(items[i as usize].display.get(lang)));
         results
     }
 }
