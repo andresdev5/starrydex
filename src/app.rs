@@ -22,9 +22,11 @@ use crate::app::pages::details::{DetailTab, Details};
 use crate::app::pages::home::Section;
 use crate::app::pages::items::ItemList;
 use crate::app::pages::move_list::MoveList;
+use crate::app::pages::save::SaveState;
 use crate::app::utils::presentation::{Label, data_lang};
 use crate::app::utils::{
-    Category, Filters, MoveSort, PaginationAction, SortBy, play_audio_file, remove_dir_contents,
+    Category, Filters, MoveSort, PaginationAction, SortBy, gen4_save, play_audio_file,
+    remove_dir_contents,
 };
 use crate::config::{AppTheme, ConfigInput, StarryConfig, TEAM_SIZE, TypeFilteringMode};
 use crate::key_binds::key_binds;
@@ -110,6 +112,8 @@ pub struct Ready {
     pub compare: [Option<u32>; 2],
     /// Search boxes of the two comparator sides
     pub compare_search: [String; 2],
+    /// Game save read from the remembered folder
+    pub save: SaveState,
     /// Items section
     pub items: ItemList,
     /// Moves section
@@ -169,6 +173,23 @@ pub enum Message {
     Types(TypesInput),
     /// Input on the moves section
     Moves(MovesInput),
+    /// Input on the game save section
+    Save(SaveInput),
+}
+
+/// Some user interaction that happens on the game save section
+#[derive(Debug, Clone)]
+pub enum SaveInput {
+    /// Ask for the game folder
+    PickFolder,
+    /// The folder dialog closed (`None` if cancelled)
+    Folder(Option<std::path::PathBuf>),
+    /// Read the save again from the remembered folder
+    Reload,
+    /// Show the Pokémon in this party or box slot
+    Select(pages::save::Slot),
+    /// Replace the team with the party of the save
+    UseAsTeam,
 }
 
 /// Some user interaction that happens on the moves section
@@ -432,7 +453,10 @@ impl cosmic::Application for AppModel {
                         }
                         Key::Character(c)
                             if modifiers == Modifiers::CTRL
-                                && matches!(c.as_str(), "1" | "2" | "3" | "4" | "5" | "6") =>
+                                && matches!(
+                                    c.as_str(),
+                                    "1" | "2" | "3" | "4" | "5" | "6" | "7"
+                                ) =>
                         {
                             let index = c.as_str().parse::<usize>().unwrap_or(1) - 1;
                             Some(Message::Hotkey(Hotkey::Section(index)))
@@ -543,9 +567,11 @@ impl cosmic::Application for AppModel {
                     favorites_only: false,
                     compare: [None, None],
                     compare_search: Default::default(),
+                    save: SaveState::default(),
                     items,
                 }));
                 self.refresh_results();
+                self.load_save();
                 Task::none()
             }
             Message::OpenPokemon(id) => {
@@ -880,6 +906,7 @@ impl cosmic::Application for AppModel {
                 list.refresh(&ready.core);
                 Task::none()
             }
+            Message::Save(input) => self.on_save_input(input),
             Message::Filters(input) => {
                 let State::Ready(ready) = &mut self.state else {
                     return Task::none();
@@ -923,6 +950,97 @@ impl AppModel {
             .active_data::<Section>()
             .copied()
             .unwrap_or_default()
+    }
+
+    fn on_save_input(&mut self, input: SaveInput) -> Task<cosmic::Action<Message>> {
+        match input {
+            SaveInput::PickFolder => {
+                return Task::perform(
+                    cosmic::dialog::file_chooser::open::Dialog::new()
+                        .title(fl!("save-dialog"))
+                        .open_folder(),
+                    |result| {
+                        let folder = result.ok().and_then(|r| r.url().to_file_path().ok());
+                        cosmic::action::app(Message::Save(SaveInput::Folder(folder)))
+                    },
+                );
+            }
+            SaveInput::Folder(None) => {}
+            SaveInput::Folder(Some(folder)) => {
+                let folder = folder.to_string_lossy().into_owned();
+                self.save_config(
+                    |c, h| c.set_save_folder(h, folder.clone()),
+                    |c| c.save_folder = folder.clone(),
+                );
+                self.load_save();
+            }
+            SaveInput::Reload => self.load_save(),
+            SaveInput::Select(slot) => {
+                if let State::Ready(ready) = &mut self.state {
+                    ready.save.selected = slot;
+                }
+            }
+            SaveInput::UseAsTeam => {
+                if let State::Ready(ready) = &self.state {
+                    let dex = ready.core.dex();
+                    let team: Vec<u32> = ready
+                        .save
+                        .data
+                        .party
+                        .iter()
+                        .map(|m| u32::from(m.species))
+                        .filter(|id| dex.pokemon(*id).is_some())
+                        .take(TEAM_SIZE)
+                        .collect();
+                    self.save_config(
+                        |c, h| c.set_team(h, team.clone()),
+                        |c| c.team = team.clone(),
+                    );
+                    self.refresh_nav_labels();
+                }
+            }
+        }
+        Task::none()
+    }
+
+    /// Reads the save in the remembered game folder (nothing if none was picked yet).
+    fn load_save(&mut self) {
+        let State::Ready(ready) = &mut self.state else {
+            return;
+        };
+        if self.config.save_folder.is_empty() {
+            return;
+        }
+        let folder = std::path::Path::new(&self.config.save_folder);
+        let mut save = SaveState {
+            selected: ready.save.selected,
+            ..SaveState::default()
+        };
+        match gen4_save::find_save(folder) {
+            None => {
+                save.error = Some(fl!(
+                    "save-not-found",
+                    folder = (folder.display().to_string())
+                ));
+            }
+            Some(path) => {
+                let file = path.display().to_string();
+                match std::fs::read(&path) {
+                    Err(e) => {
+                        save.error =
+                            Some(fl!("save-read-error", file = file, error = (e.to_string())));
+                    }
+                    Ok(bytes) => match gen4_save::read_save(&bytes) {
+                        Ok(data) => save.data = data,
+                        Err(gen4_save::SaveError::NotASave) => {
+                            save.error = Some(fl!("save-not-a-save", file = file));
+                        }
+                    },
+                }
+                save.path = Some(path);
+            }
+        }
+        ready.save = save;
     }
 
     /// Shows how full the team is next to its section name.
@@ -1059,7 +1177,7 @@ impl AppModel {
                 Section::Moves => {
                     widget::text_input::focus(widget::Id::new(pages::move_list::SEARCH_ID))
                 }
-                Section::Types | Section::Compare | Section::Team => Task::none(),
+                Section::Types | Section::Compare | Section::Team | Section::Save => Task::none(),
             },
             Hotkey::ArrowUp | Hotkey::ArrowDown if in_details => {
                 self.update(Message::Details(DetailsInput::Step(direction)))
@@ -1074,7 +1192,7 @@ impl AppModel {
             }
             Hotkey::ArrowUp | Hotkey::ArrowDown => Task::none(),
             Hotkey::ArrowLeft | Hotkey::ArrowRight => match section {
-                Section::Types | Section::Compare | Section::Team => Task::none(),
+                Section::Types | Section::Compare | Section::Team | Section::Save => Task::none(),
                 Section::Items => self.update(Message::Items(ItemsInput::Page(direction))),
                 Section::Moves => self.update(Message::Moves(MovesInput::Page(direction))),
                 Section::Pokemon if in_details => {

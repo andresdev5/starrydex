@@ -149,6 +149,73 @@ impl GrowthRate {
             Self::Fluctuating => 1_640_000,
         }
     }
+
+    /// Total experience required to reach `level` (1–100).
+    pub fn exp_at(self, level: u8) -> u32 {
+        let n = i64::from(level.clamp(1, 100));
+        if n == 1 {
+            return 0;
+        }
+        let cube = n * n * n;
+        let exp = match self {
+            Self::Slow => 5 * cube / 4,
+            Self::Medium => cube,
+            Self::Fast => 4 * cube / 5,
+            Self::MediumSlow => 6 * cube / 5 - 15 * n * n + 100 * n - 140,
+            Self::Erratic => match n {
+                ..50 => cube * (100 - n) / 50,
+                50..68 => cube * (150 - n) / 100,
+                68..98 => cube * ((1911 - 10 * n) / 3) / 500,
+                _ => cube * (160 - n) / 100,
+            },
+            Self::Fluctuating => match n {
+                ..15 => cube * ((n + 1) / 3 + 24) / 50,
+                15..36 => cube * (n + 14) / 50,
+                _ => cube * (n / 2 + 32) / 50,
+            },
+        };
+        exp.max(0) as u32
+    }
+
+    /// Level of a Pokémon with `exp` total experience.
+    pub fn level_for(self, exp: u32) -> u8 {
+        (1..=100)
+            .rev()
+            .find(|&level| self.exp_at(level) <= exp)
+            .unwrap_or(1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GrowthRate;
+
+    #[test]
+    fn curves_reach_the_level_100_totals() {
+        for rate in GrowthRate::ALL {
+            assert_eq!(rate.exp_at(100), rate.exp_at_100(), "{rate:?}");
+        }
+    }
+
+    #[test]
+    fn levels_come_from_experience() {
+        assert_eq!(GrowthRate::Medium.level_for(0), 1);
+        assert_eq!(GrowthRate::Medium.level_for(2744), 14);
+        assert_eq!(GrowthRate::Medium.level_for(2743), 13);
+        assert_eq!(
+            GrowthRate::MediumSlow.level_for(GrowthRate::MediumSlow.exp_at(36)),
+            36
+        );
+        for rate in GrowthRate::ALL {
+            for level in 1..=100 {
+                assert_eq!(
+                    rate.level_for(rate.exp_at(level)),
+                    level,
+                    "{rate:?} {level}"
+                );
+            }
+        }
+    }
 }
 
 portable_enum! {

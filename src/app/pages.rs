@@ -7,6 +7,7 @@ pub mod filters;
 pub mod home;
 pub mod items;
 pub mod move_list;
+pub mod save;
 pub mod settings;
 pub mod team;
 pub mod types;

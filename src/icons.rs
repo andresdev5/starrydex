@@ -45,6 +45,9 @@ impl IconCache {
         bundle!("view-grid-symbolic", 16);
         bundle!("package-x-generic-symbolic", 16);
         bundle!("moves-symbolic", 16);
+        bundle!("pokeball-symbolic", 16);
+        bundle!("pc-box-symbolic", 16);
+        bundle!("grave-symbolic", 16);
         bundle!("view-dual-symbolic", 16);
         bundle!("view-dual-symbolic", 18);
         bundle!("system-users-symbolic", 16);

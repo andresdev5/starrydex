@@ -31,12 +31,15 @@ pub fn view<'a>(app: &'a AppModel, ready: &'a Ready) -> Element<'a, Message> {
         .filter_map(|id| dex.pokemon(*id))
         .collect();
 
-    let title = widget::row::with_children(vec![
+    let mut title = vec![
         text::title3(fl!("team-title")).into(),
         text::caption(fl!("team-count", count = team.len())).into(),
-    ])
-    .spacing(spacing.space_s)
-    .align_y(Alignment::Center);
+        widget::Space::new().width(Length::Fill).into(),
+    ];
+    title.push(crate::app::pages::save::link());
+    let title = widget::row::with_children(title)
+        .spacing(spacing.space_s)
+        .align_y(Alignment::Center);
 
     let slots: Vec<Element<'a, Message>> = (0..TEAM_SIZE)
         .map(|i| match team.get(i) {

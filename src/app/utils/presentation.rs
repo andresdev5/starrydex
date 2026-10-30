@@ -445,3 +445,34 @@ mod tests {
         assert_eq!(gender_split(1), Some((87.5, 12.5)));
     }
 }
+
+/// Localized name of a nature (0–24, in the games' order).
+pub fn nature_name(nature: u8) -> String {
+    match nature {
+        0 => fl!("nature-hardy"),
+        1 => fl!("nature-lonely"),
+        2 => fl!("nature-brave"),
+        3 => fl!("nature-adamant"),
+        4 => fl!("nature-naughty"),
+        5 => fl!("nature-bold"),
+        6 => fl!("nature-docile"),
+        7 => fl!("nature-relaxed"),
+        8 => fl!("nature-impish"),
+        9 => fl!("nature-lax"),
+        10 => fl!("nature-timid"),
+        11 => fl!("nature-hasty"),
+        12 => fl!("nature-serious"),
+        13 => fl!("nature-jolly"),
+        14 => fl!("nature-naive"),
+        15 => fl!("nature-modest"),
+        16 => fl!("nature-mild"),
+        17 => fl!("nature-quiet"),
+        18 => fl!("nature-bashful"),
+        19 => fl!("nature-rash"),
+        20 => fl!("nature-calm"),
+        21 => fl!("nature-gentle"),
+        22 => fl!("nature-sassy"),
+        23 => fl!("nature-careful"),
+        _ => fl!("nature-quirky"),
+    }
+}

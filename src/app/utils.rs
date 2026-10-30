@@ -4,6 +4,7 @@ mod audio;
 pub mod battle;
 mod filesystem;
 pub mod filters;
+pub mod gen4_save;
 mod pagination;
 pub mod presentation;
 

@@ -24,6 +24,8 @@ pub struct StarryConfig {
     pub favorites: Vec<u32>,
     /// Ids of the Pokémon in the team, in slot order (at most [`TEAM_SIZE`]).
     pub team: Vec<u32>,
+    /// Game folder the team was last imported from (empty if never).
+    pub save_folder: String,
 }
 
 pub const TEAM_SIZE: usize = 6;
@@ -38,6 +40,7 @@ impl Default for StarryConfig {
             cry_volume: 5,
             favorites: Vec::new(),
             team: Vec::new(),
+            save_folder: String::new(),
         }
     }
 }

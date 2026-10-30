@@ -73,6 +73,8 @@ features = [
     "wayland",
     # GPU-accelerated rendering
     "wgpu",
+    # Native file and folder pickers through the XDG desktop portal
+    "xdg-portal",
 ]
 
 [dependencies.i18n-embed]

@@ -38,6 +38,7 @@ pub enum Section {
     Types,
     Compare,
     Team,
+    Save,
 }
 
 impl Section {
@@ -48,6 +49,7 @@ impl Section {
         Self::Types,
         Self::Compare,
         Self::Team,
+        Self::Save,
     ];
 
     pub fn icon_name(&self) -> &'static str {
@@ -58,6 +60,7 @@ impl Section {
             Self::Types => "view-grid-symbolic",
             Self::Compare => "view-dual-symbolic",
             Self::Team => "system-users-symbolic",
+            Self::Save => "pokeball-symbolic",
         }
     }
 }
@@ -71,6 +74,7 @@ impl Label for Section {
             Self::Moves => fl!("home-moves"),
             Self::Compare => fl!("home-compare"),
             Self::Team => fl!("home-team"),
+            Self::Save => fl!("home-save"),
         }
     }
 }
@@ -90,6 +94,7 @@ pub fn view<'a>(
         Section::Moves => crate::app::pages::move_list::view(app, ready),
         Section::Compare => crate::app::pages::compare::view(ready),
         Section::Team => crate::app::pages::team::view(app, ready),
+        Section::Save => crate::app::pages::save::view(app, ready),
     };
     container(content)
         .padding([spacing.space_xxs, spacing.space_s])
