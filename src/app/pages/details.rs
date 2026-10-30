@@ -10,7 +10,7 @@ use cosmic::{Element, theme};
 use starrydex_model::{ArchivedPokedex, ArchivedPokemon, ArchivedSpecies, Lang};
 
 use crate::app::core::StarryCore;
-use crate::app::pages::common::type_badge;
+use crate::app::pages::common::{toggle_icon, type_badge};
 use crate::app::utils::PaginationAction;
 use crate::app::utils::presentation::{Label, data_lang, dex_number};
 use crate::app::{DetailsInput, Message};
@@ -133,6 +133,14 @@ impl Details {
     }
 }
 
+/// Where the open Pokémon is saved, for the buttons of the header.
+#[derive(Debug, Clone, Copy)]
+pub struct Marks {
+    pub favorite: bool,
+    pub in_team: bool,
+    pub team_full: bool,
+}
+
 /// Everything a tab needs to draw itself.
 #[derive(Clone, Copy)]
 pub struct Ctx<'a> {
@@ -146,6 +154,8 @@ pub struct Ctx<'a> {
 
 /// Widest the tab content gets; beyond this it stays centered instead of stretching.
 const MAX_CONTENT_WIDTH: f32 = 1440.0;
+/// Narrower than this, the header stacks the name and types under the buttons.
+const STACKED_HEADER_WIDTH: f32 = 640.0;
 
 /// Responsive layout information handed to every tab, derived from the available width.
 #[derive(Debug, Clone, Copy)]
@@ -188,7 +198,11 @@ impl Layout {
 
 /// Lays `items` out in `columns` equal-width columns (masonry style: items are dealt
 /// round-robin so short and tall cards mix instead of leaving one column much longer).
-pub fn grid<'a>(items: Vec<Element<'a, Message>>, columns: usize, spacing: u16) -> Element<'a, Message> {
+pub fn grid<'a>(
+    items: Vec<Element<'a, Message>>,
+    columns: usize,
+    spacing: u16,
+) -> Element<'a, Message> {
     let columns = columns.max(1).min(items.len().max(1));
     if columns == 1 {
         return widget::column::with_children(items)
@@ -221,7 +235,9 @@ pub fn view<'a>(
     details: &'a Details,
     tabs: &'a segmented_button::SingleSelectModel,
     tab: DetailTab,
-    _results: &'a [u32],
+    show_back: bool,
+    width: f32,
+    marks: Marks,
 ) -> Element<'a, Message> {
     let spacing = theme::active().cosmic().spacing;
     let dex = core.dex();
@@ -239,7 +255,7 @@ pub fn view<'a>(
 
     // The tab is rebuilt with the real available width, so every tab can pick its layout.
     let body = widget::responsive(move |size| {
-        let padding = f32::from(spacing.space_xxs) * 2.0;
+        let padding = f32::from(spacing.space_xxs + spacing.space_m);
         let layout = Layout::from_width(size.width - padding);
         let content = match tab {
             DetailTab::Overview => overview::view(ctx, layout),
@@ -255,7 +271,13 @@ pub fn view<'a>(
                     .max_width(MAX_CONTENT_WIDTH)
                     .width(Length::Fill),
             )
-            .padding([spacing.space_xs, spacing.space_xxs])
+            // Extra room on the right so the scrollbar doesn't cover the cards.
+            .padding([
+                spacing.space_xs,
+                spacing.space_m,
+                spacing.space_xs,
+                spacing.space_xxs,
+            ])
             .width(Length::Fill)
             .align_x(Alignment::Center),
         )
@@ -264,12 +286,22 @@ pub fn view<'a>(
         .into()
     });
 
+    let stacked = width < STACKED_HEADER_WIDTH;
+    let tabs = widget::segmented_control::horizontal(tabs).on_activate(Message::DetailTab);
+    // Too narrow for every tab label: let the tabs keep their size and scroll sideways.
+    let tabs: Element<'a, Message> = if stacked {
+        widget::scrollable::horizontal(
+            widget::container(tabs.width(Length::Shrink)).padding([0, 0, 10, 0]),
+        )
+        .width(Length::Fill)
+        .into()
+    } else {
+        tabs.width(Length::Fill).into()
+    };
+
     widget::column::with_children(vec![
-        header(ctx),
-        widget::segmented_control::horizontal(tabs)
-            .on_activate(Message::DetailTab)
-            .width(Length::Fill)
-            .into(),
+        header(ctx, show_back, stacked, marks),
+        tabs,
         body.into(),
     ])
     .spacing(spacing.space_xs)
@@ -278,7 +310,7 @@ pub fn view<'a>(
     .into()
 }
 
-fn header(ctx: Ctx<'_>) -> Element<'_, Message> {
+fn header(ctx: Ctx<'_>, show_back: bool, stacked: bool, marks: Marks) -> Element<'_, Message> {
     let Ctx {
         pokemon,
         species,
@@ -287,7 +319,7 @@ fn header(ctx: Ctx<'_>) -> Element<'_, Message> {
         ..
     } = ctx;
 
-    let mut subtitle = vec![dex_number(pokemon.species_id.to_native())];
+    let mut subtitle = Vec::new();
     if let Some(species) = species {
         let genus = species.genus.get(lang);
         if !genus.is_empty() {
@@ -303,37 +335,118 @@ fn header(ctx: Ctx<'_>) -> Element<'_, Message> {
     };
 
     let title = widget::column::with_children(vec![
-        text::title2(pokemon.display.get(lang)).into(),
-        text::body(subtitle.join(" · ")).into(),
+        text::heading(dex_number(pokemon.species_id.to_native()))
+            .class(theme::Text::Accent)
+            .into(),
+        text::title1(pokemon.display.get(lang)).into(),
+        text::caption(subtitle.join(" · ")).into(),
     ])
     .spacing(2)
     .width(Length::Fill);
 
-    let types = widget::row::with_children(pokemon.types.iter().map(|t| type_badge(*t)).collect::<Vec<_>>())
-        .spacing(6);
+    let types = widget::row::with_children(
+        pokemon
+            .types
+            .iter()
+            .map(|t| type_badge(*t))
+            .collect::<Vec<_>>(),
+    )
+    .spacing(6);
 
-    widget::row::with_children(vec![
+    let back = show_back.then(|| {
         button::text(back_label)
             .leading_icon(icons::get_handle("go-previous-symbolic", 18))
             .on_press(Message::Back)
-            .into(),
-        title.into(),
-        types.into(),
-        widget::tooltip(
-            button::icon(icons::get_handle("go-previous-symbolic", 18))
-                .on_press(Message::Details(DetailsInput::Step(PaginationAction::Back))),
-            text::body(fl!("previous-pokemon")),
-            widget::tooltip::Position::Bottom,
+            .into()
+    });
+    let id = pokemon.id.to_native();
+    let favorite = widget::tooltip(
+        toggle_icon(
+            if marks.favorite {
+                "starred-symbolic"
+            } else {
+                "non-starred-symbolic"
+            },
+            marks.favorite,
         )
-        .into(),
-        widget::tooltip(
-            button::icon(icons::get_handle("go-next-symbolic", 18))
-                .on_press(Message::Details(DetailsInput::Step(PaginationAction::Next))),
-            text::body(fl!("next-pokemon")),
-            widget::tooltip::Position::Bottom,
+        .on_press(Message::ToggleFavorite(id)),
+        text::body(if marks.favorite {
+            fl!("favorite-remove")
+        } else {
+            fl!("favorite-add")
+        }),
+        widget::tooltip::Position::Bottom,
+    )
+    .into();
+    let team = widget::tooltip(
+        toggle_icon("system-users-symbolic", marks.in_team)
+            .on_press_maybe((marks.in_team || !marks.team_full).then_some(Message::ToggleTeam(id))),
+        text::body(if marks.in_team {
+            fl!("team-remove")
+        } else if marks.team_full {
+            fl!("team-full")
+        } else {
+            fl!("team-add")
+        }),
+        widget::tooltip::Position::Bottom,
+    )
+    .into();
+    let compare = widget::tooltip(
+        button::icon(icons::get_handle("view-dual-symbolic", 18))
+            .on_press(Message::CompareWith(id)),
+        text::body(fl!("compare-with")),
+        widget::tooltip::Position::Bottom,
+    )
+    .into();
+    let previous = widget::tooltip(
+        button::icon(icons::get_handle("go-previous-symbolic", 18))
+            .on_press(Message::Details(DetailsInput::Step(PaginationAction::Back))),
+        text::body(fl!("previous-pokemon")),
+        widget::tooltip::Position::Bottom,
+    )
+    .into();
+    let next = widget::tooltip(
+        button::icon(icons::get_handle("go-next-symbolic", 18))
+            .on_press(Message::Details(DetailsInput::Step(PaginationAction::Next))),
+        text::body(fl!("next-pokemon")),
+        widget::tooltip::Position::Bottom,
+    )
+    .into();
+
+    if stacked {
+        let buttons = widget::row::with_children(
+            back.into_iter()
+                .chain([
+                    widget::Space::new().width(Length::Fill).into(),
+                    favorite,
+                    team,
+                    compare,
+                    previous,
+                    next,
+                ])
+                .collect::<Vec<_>>(),
         )
-        .into(),
-    ])
+        .spacing(12)
+        .align_y(Alignment::Center);
+        return widget::column::with_children(vec![buttons.into(), title.into(), types.into()])
+            .spacing(8)
+            .width(Length::Fill)
+            .into();
+    }
+
+    widget::row::with_children(
+        back.into_iter()
+            .chain([
+                title.into(),
+                types.into(),
+                favorite,
+                team,
+                compare,
+                previous,
+                next,
+            ])
+            .collect::<Vec<_>>(),
+    )
     .spacing(12)
     .align_y(Alignment::Center)
     .into()

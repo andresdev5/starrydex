@@ -2,44 +2,75 @@
 
 use std::borrow::Cow;
 
-use cosmic::iced::core::text::LineHeight;
+use cosmic::iced::core::text::{LineHeight, Wrapping};
 use cosmic::iced::{Alignment, Length, Pixels};
 use cosmic::widget::{self, button, container, segmented_button, text};
 use cosmic::{Element, theme};
-use starrydex_model::{ArchivedPokemon, SpriteKind};
+use starrydex_model::{ArchivedPokemon, PokemonType, SpriteKind};
 
 use crate::app::context_page::ContextPage;
 use crate::app::core::StarryCore;
-use crate::app::pages::common::{sprite, type_icon};
-use crate::app::utils::PaginationAction;
+use crate::app::pages::common::{sprite, toggle_icon, type_chip, type_icon};
+use crate::app::pages::details::{self, DetailTab, Marks};
 use crate::app::utils::presentation::{Label, data_lang, dex_number};
-use crate::app::{AppModel, ListInput, Message, Ready, page_count};
-use crate::config::ViewMode;
+use crate::app::utils::{PaginationAction, SortBy};
+use crate::app::{AppModel, FiltersInput, ListInput, Message, Ready, page_count};
+use crate::config::TEAM_SIZE;
 use crate::{fl, icons};
 
-const CARD_WIDTH: f32 = 168.0;
-const CARD_HEIGHT: f32 = 168.0;
 pub const LIST_SCROLL_ID: &str = "pokemon-list";
+pub const SEARCH_ID: &str = "pokemon-search";
+/// Height of a row of the Pokémon list. Fixed so the selected row can be scrolled into view.
+pub const ROW_HEIGHT: f32 = 56.0;
+pub const ROW_SPACING: f32 = 2.0;
+/// Width of the Pokémon list when it is shown next to the details.
+const LIST_WIDTH: f32 = 370.0;
+/// Narrower than this, the list and the details are shown one at a time.
+const SPLIT_MIN_WIDTH: f32 = 860.0;
 
-/// Sections of the main page, picked with the button group at the top.
+/// Sections of the app, picked from the navigation bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum HomeSection {
+pub enum Section {
     #[default]
     Pokemon,
-    Types,
     Items,
+    Moves,
+    Types,
+    Compare,
+    Team,
 }
 
-impl HomeSection {
-    pub const ALL: &'static [Self] = &[Self::Pokemon, Self::Types, Self::Items];
+impl Section {
+    pub const ALL: &'static [Self] = &[
+        Self::Pokemon,
+        Self::Items,
+        Self::Moves,
+        Self::Types,
+        Self::Compare,
+        Self::Team,
+    ];
+
+    pub fn icon_name(&self) -> &'static str {
+        match self {
+            Self::Pokemon => "view-list-symbolic",
+            Self::Items => "package-x-generic-symbolic",
+            Self::Moves => "moves-symbolic",
+            Self::Types => "view-grid-symbolic",
+            Self::Compare => "view-dual-symbolic",
+            Self::Team => "system-users-symbolic",
+        }
+    }
 }
 
-impl Label for HomeSection {
+impl Label for Section {
     fn label(&self) -> String {
         match self {
             Self::Pokemon => fl!("home-pokemon"),
             Self::Types => fl!("home-types"),
             Self::Items => fl!("home-items"),
+            Self::Moves => fl!("home-moves"),
+            Self::Compare => fl!("home-compare"),
+            Self::Team => fl!("home-team"),
         }
     }
 }
@@ -47,33 +78,79 @@ impl Label for HomeSection {
 pub fn view<'a>(
     app: &'a AppModel,
     ready: &'a Ready,
-    sections: &'a segmented_button::SingleSelectModel,
-    section: HomeSection,
+    tabs: &'a segmented_button::SingleSelectModel,
+    tab: DetailTab,
+    section: Section,
 ) -> Element<'a, Message> {
     let spacing = theme::active().cosmic().spacing;
     let content = match section {
-        HomeSection::Pokemon => pokemon_list(app, ready),
-        HomeSection::Types => crate::app::pages::types::view(ready),
-        HomeSection::Items => crate::app::pages::items::view(app, ready),
+        Section::Pokemon => return pokedex(app, ready, tabs, tab),
+        Section::Types => crate::app::pages::types::view(ready),
+        Section::Items => crate::app::pages::items::view(app, ready),
+        Section::Moves => crate::app::pages::move_list::view(app, ready),
+        Section::Compare => crate::app::pages::compare::view(ready),
+        Section::Team => crate::app::pages::team::view(app, ready),
     };
-    widget::column::with_children(vec![
-        container(
-            widget::segmented_control::horizontal(sections)
-                .on_activate(Message::HomeSection)
-                .width(Length::Fixed(420.0)),
-        )
+    container(content)
+        .padding([spacing.space_xxs, spacing.space_s])
         .width(Length::Fill)
-        .align_x(Alignment::Center)
-        .into(),
-        content,
-    ])
-    .spacing(spacing.space_xxs)
-    .padding([spacing.space_xxs, spacing.space_s])
-    .width(Length::Fill)
+        .into()
+}
+
+/// The Pokémon list with the open Pokémon next to it, or one of the two on small windows.
+fn pokedex<'a>(
+    app: &'a AppModel,
+    ready: &'a Ready,
+    tabs: &'a segmented_button::SingleSelectModel,
+    tab: DetailTab,
+) -> Element<'a, Message> {
+    widget::responsive(move |size| {
+        let split = size.width >= SPLIT_MIN_WIDTH;
+        let details_width = if split {
+            size.width - LIST_WIDTH
+        } else {
+            size.width
+        };
+        let details = ready.details.as_ref().map(|d| {
+            let show_back = !split || !d.history.is_empty();
+            let id = ready.core.dex().pokemon[d.index].id.to_native();
+            let marks = Marks {
+                favorite: app.config.favorites.contains(&id),
+                in_team: app.config.team.contains(&id),
+                team_full: app.config.team.len() >= TEAM_SIZE,
+            };
+            details::view(&ready.core, d, tabs, tab, show_back, details_width, marks)
+        });
+        if !split {
+            return details.unwrap_or_else(|| list_pane(app, ready));
+        }
+        widget::row::with_children(vec![
+            container(list_pane(app, ready))
+                .width(Length::Fixed(LIST_WIDTH))
+                .height(Length::Fill)
+                .into(),
+            widget::divider::vertical::default().into(),
+            details.unwrap_or_else(placeholder),
+        ])
+        .height(Length::Fill)
+        .into()
+    })
     .into()
 }
 
-fn pokemon_list<'a>(app: &'a AppModel, ready: &'a Ready) -> Element<'a, Message> {
+fn placeholder<'a>() -> Element<'a, Message> {
+    cosmic::iced::widget::center(
+        widget::column::with_children(vec![
+            text::title3(fl!("select-pokemon")).into(),
+            text::body(fl!("select-pokemon-hint")).into(),
+        ])
+        .spacing(8)
+        .align_x(Alignment::Center),
+    )
+    .into()
+}
+
+fn list_pane<'a>(app: &'a AppModel, ready: &'a Ready) -> Element<'a, Message> {
     let spacing = theme::active().cosmic().spacing;
     let per_page = app.config.pokemon_per_page.max(1);
     let pages = page_count(ready.results.len(), per_page);
@@ -88,39 +165,58 @@ fn pokemon_list<'a>(app: &'a AppModel, ready: &'a Ready) -> Element<'a, Message>
     } else {
         fl!("filters-page")
     };
-    let has_query =
-        !ready.search.is_empty() || ready.filters.any_applied() || ready.sort != Default::default();
-    let order_label = if ready.descending {
-        fl!("order-descending")
+    let has_query = !ready.search.is_empty()
+        || ready.filters.any_applied()
+        || ready.sort != Default::default()
+        || ready.favorites_only;
+    let order_icon = if ready.descending {
+        "go-down-symbolic"
     } else {
-        fl!("order-ascending")
+        "go-up-symbolic"
     };
 
-    let toolbar = widget::row::with_children(vec![
+    let search = widget::row::with_children(vec![
         widget::search_input(fl!("search-placeholder"), &ready.search)
+            .id(widget::Id::new(SEARCH_ID))
             .on_input(|v| Message::List(ListInput::Search(v)))
             .on_clear(Message::List(ListInput::Search(String::new())))
             .line_height(LineHeight::Absolute(Pixels(30.0)))
             .width(Length::Fill)
             .into(),
+        widget::tooltip(
+            toggle_icon("starred-symbolic", ready.favorites_only)
+                .on_press(Message::List(ListInput::ToggleFavoritesOnly)),
+            text::body(fl!("favorites-only")),
+            widget::tooltip::Position::Bottom,
+        )
+        .into(),
+        widget::tooltip(
+            toggle_icon("filter-symbolic", filter_count > 0)
+                .on_press(Message::ToggleContextPage(ContextPage::FiltersPage)),
+            text::body(filter_label),
+            widget::tooltip::Position::Bottom,
+        )
+        .into(),
+    ])
+    .spacing(spacing.space_xxs)
+    .align_y(Alignment::Center);
+
+    let toolbar = widget::row::with_children(vec![
+        text::caption(fl!("sort-by")).into(),
         widget::dropdown(
             Cow::Borrowed(app.sort_options.as_slice()),
-            crate::app::utils::SortBy::ALL
-                .iter()
-                .position(|s| *s == ready.sort),
+            SortBy::ALL.iter().position(|s| *s == ready.sort),
             |i| Message::List(ListInput::Sort(i)),
         )
         .into(),
         widget::tooltip(
-            button::standard(order_label).on_press(Message::List(ListInput::ToggleOrder)),
+            button::icon(icons::get_handle(order_icon, 18))
+                .on_press(Message::List(ListInput::ToggleOrder)),
             text::body(fl!("reverse-order")),
             widget::tooltip::Position::Bottom,
         )
         .into(),
-        button::standard(filter_label)
-            .leading_icon(icons::get_handle("filter-symbolic", 18))
-            .on_press(Message::ToggleContextPage(ContextPage::FiltersPage))
-            .into(),
+        widget::Space::new().width(Length::Fill).into(),
         widget::tooltip(
             button::icon(icons::get_handle("edit-clear-all-symbolic", 18))
                 .class(theme::Button::Destructive)
@@ -138,6 +234,7 @@ fn pokemon_list<'a>(app: &'a AppModel, ready: &'a Ready) -> Element<'a, Message>
     let core = &ready.core;
     let dex = core.dex();
     let visible = &ready.results[start..end];
+    let selected = ready.details.as_ref().map(|d| d.index);
     let content: Element<'a, Message> = if visible.is_empty() {
         widget::column::with_children(vec![
             text::title3(fl!("no-results")).into(),
@@ -152,32 +249,25 @@ fn pokemon_list<'a>(app: &'a AppModel, ready: &'a Ready) -> Element<'a, Message>
         .width(Length::Fill)
         .into()
     } else {
-        let cards = visible
-            .iter()
-            .map(|&index| pokemon_card(core, &dex.pokemon[index as usize]));
-        match app.config.view_mode {
-            ViewMode::Manual { pokemon_per_row } => {
-                let mut grid = widget::Grid::new()
-                    .column_spacing(spacing.space_xs)
-                    .row_spacing(spacing.space_xs);
-                for (i, card) in cards.enumerate() {
-                    if i > 0 && i % pokemon_per_row.max(1) == 0 {
-                        grid = grid.insert_row();
-                    }
-                    grid = grid.push(card);
-                }
-                container(grid)
-                    .width(Length::Fill)
-                    .align_x(Alignment::Center)
-                    .into()
-            }
-            ViewMode::Responsive => widget::flex_row(cards.collect())
-                .row_spacing(spacing.space_xs)
-                .column_spacing(spacing.space_xs)
-                .justify_content(widget::JustifyContent::Center)
-                .width(Length::Fill)
-                .into(),
-        }
+        widget::column::with_children(
+            visible
+                .iter()
+                .map(|&index| {
+                    let pokemon = &dex.pokemon[index as usize];
+                    pokemon_row(
+                        core,
+                        pokemon,
+                        ready.sort,
+                        selected == Some(index as usize),
+                        app.config.favorites.contains(&pokemon.id.to_native()),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )
+        .spacing(ROW_SPACING)
+        .padding([0, spacing.space_xs, 0, 0])
+        .width(Length::Fill)
+        .into()
     };
 
     // FOOTER
@@ -198,34 +288,79 @@ fn pokemon_list<'a>(app: &'a AppModel, ready: &'a Ready) -> Element<'a, Message>
                 (page > 0).then_some(Message::List(ListInput::Page(PaginationAction::Back))),
             )
             .into(),
-        text::body(fl!("page-of", page = (page + 1), pages = pages)).into(),
+        text::caption(format!("{}/{pages}", page + 1)).into(),
         button::icon(icons::get_handle("go-next-symbolic", 18))
             .on_press_maybe(
                 (page + 1 < pages)
                     .then_some(Message::List(ListInput::Page(PaginationAction::Next))),
             )
             .into(),
-        widget::Space::new().width(Length::Fill).into(),
     ])
-    .spacing(spacing.space_s)
+    .spacing(spacing.space_xxs)
     .align_y(Alignment::Center);
 
     widget::column::with_children(vec![
+        search.into(),
         toolbar.into(),
-        widget::scrollable(container(content).padding([spacing.space_xs, 0]))
+        type_chips(ready),
+        widget::scrollable(content)
             .id(LIST_SCROLL_ID)
-            .on_scroll(|viewport| Message::List(ListInput::Scrolled(viewport.absolute_offset())))
+            .on_scroll(|viewport| {
+                Message::List(ListInput::Scrolled(
+                    viewport.absolute_offset(),
+                    viewport.bounds().height,
+                ))
+            })
             .height(Length::Fill)
             .width(Length::Fill)
             .into(),
         footer.into(),
     ])
     .spacing(spacing.space_xxs)
+    .padding([spacing.space_xxs, spacing.space_s])
     .width(Length::Fill)
     .into()
 }
 
-fn pokemon_card<'a>(core: &'a StarryCore, pokemon: &'a ArchivedPokemon) -> Element<'a, Message> {
+/// Quick type filter: one chip per type plus one that clears them all.
+fn type_chips<'a>(ready: &'a Ready) -> Element<'a, Message> {
+    let types = &ready.filters.types;
+    let mut chips = vec![
+        button::text(fl!("all-types"))
+            .class(if types.is_empty() {
+                theme::Button::Suggested
+            } else {
+                theme::Button::Text
+            })
+            .on_press(Message::Filters(FiltersInput::ClearTypes))
+            .into(),
+    ];
+    chips.extend(PokemonType::ALL.iter().map(|&t| {
+        let on = types.contains(&t);
+        widget::tooltip(
+            button::custom(type_chip(t, on, false))
+                .padding(0)
+                .class(theme::Button::Text)
+                .on_press(Message::Filters(FiltersInput::Type(!on, t))),
+            text::body(t.label()),
+            widget::tooltip::Position::Bottom,
+        )
+        .into()
+    }));
+    widget::flex_row(chips)
+        .row_spacing(4)
+        .column_spacing(4)
+        .width(Length::Fill)
+        .into()
+}
+
+fn pokemon_row<'a>(
+    core: &'a StarryCore,
+    pokemon: &'a ArchivedPokemon,
+    sort: SortBy,
+    selected: bool,
+    favorite: bool,
+) -> Element<'a, Message> {
     let lang = data_lang();
     let types = widget::row::with_children(
         pokemon
@@ -236,24 +371,65 @@ fn pokemon_card<'a>(core: &'a StarryCore, pokemon: &'a ArchivedPokemon) -> Eleme
     )
     .spacing(4);
 
-    let mut column = widget::column::with_children(vec![
-        sprite(core.sprite(pokemon, SpriteKind::Front), 96.0),
+    let name = widget::column::with_children(vec![
         text::caption(dex_number(pokemon.species_id.to_native())).into(),
         text::heading(pokemon.display.get(lang))
-            .align_x(Alignment::Center)
-            .wrapping(cosmic::iced::core::text::Wrapping::WordOrGlyph)
+            .wrapping(Wrapping::None)
             .into(),
     ])
-    .spacing(2)
-    .width(Length::Fill)
-    .align_x(Alignment::Center);
-    column = column.push(types);
+    .width(Length::Fill);
 
-    button::custom(column)
-        .width(Length::Fixed(CARD_WIDTH))
-        .height(Length::Fixed(CARD_HEIGHT))
-        .padding(6)
-        .on_press(Message::OpenPokemon(pokemon.id.to_native()))
+    let star: Element<'a, Message> = if favorite {
+        widget::icon(icons::get_handle("starred-symbolic", 16))
+            .size(14)
+            .class(theme::Svg::custom(|theme| cosmic::widget::svg::Style {
+                color: Some(theme.cosmic().accent_color().into()),
+            }))
+            .into()
+    } else {
+        widget::Space::new().width(Length::Fixed(14.0)).into()
+    };
+    let row = widget::row::with_children(vec![
+        sprite(core.sprite(pokemon, SpriteKind::Front), 44.0),
+        name.into(),
+        star,
+        types.into(),
+        sort_value(pokemon, sort),
+    ])
+    .spacing(10)
+    .align_y(Alignment::Center);
+
+    button::custom(row)
+        .width(Length::Fill)
+        .height(Length::Fixed(ROW_HEIGHT))
+        .padding([4, 8])
+        .selected(selected)
+        .on_press(Message::SelectPokemon(pokemon.id.to_native()))
         .class(theme::Button::IconVertical)
         .into()
+}
+
+/// Value the list is sorted by (the base stat total when sorting by number or name),
+/// highlighted when it is what the list is sorted by.
+fn sort_value<'a>(pokemon: &ArchivedPokemon, sort: SortBy) -> Element<'a, Message> {
+    let stats = &pokemon.stats;
+    let value = match sort {
+        SortBy::Number | SortBy::Name | SortBy::Total => stats.total().to_string(),
+        SortBy::Hp => stats.hp.to_string(),
+        SortBy::Attack => stats.attack.to_string(),
+        SortBy::Defense => stats.defense.to_string(),
+        SortBy::SpAttack => stats.sp_attack.to_string(),
+        SortBy::SpDefense => stats.sp_defense.to_string(),
+        SortBy::Speed => stats.speed.to_string(),
+        SortBy::Height => format!("{:.1} m", f32::from(pokemon.height.to_native()) / 10.0),
+        SortBy::Weight => format!("{:.1} kg", f32::from(pokemon.weight.to_native()) / 10.0),
+    };
+    let label = text::caption(value)
+        .width(Length::Fixed(56.0))
+        .align_x(Alignment::End);
+    if matches!(sort, SortBy::Number | SortBy::Name) {
+        label.into()
+    } else {
+        label.class(theme::Text::Accent).into()
+    }
 }

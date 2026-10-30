@@ -3,7 +3,7 @@
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget::{self, text};
 use cosmic::{Element, theme};
-use starrydex_model::{PokemonType, stat_range_at_100};
+use starrydex_model::stat_range_at_100;
 
 use super::{Ctx, Layout};
 use crate::app::Message;
@@ -15,10 +15,10 @@ use crate::fl;
 pub fn view<'a>(ctx: Ctx<'a>, layout: Layout) -> Element<'a, Message> {
     let spacing = theme::active().cosmic().spacing;
 
-    let mut side = vec![type_defenses(ctx)];
-    if !ctx.pokemon.past_types.is_empty() {
-        side.push(past_types(ctx, layout));
+    if ctx.pokemon.past_types.is_empty() {
+        return base_stats(ctx, layout);
     }
+    let side = vec![past_types(ctx, layout)];
 
     if layout.narrow() {
         let mut column = vec![base_stats(ctx, layout)];
@@ -50,15 +50,13 @@ fn base_stats(ctx: Ctx<'_>, layout: Layout) -> Element<'_, Message> {
     let stats = pokemon.stats.values();
     let compact = layout.compact();
 
-    let chart = stats
-        .iter()
-        .fold(
-            BarChart::new()
-                .column_spacing(3.)
-                .padding(3.)
-                .height(Length::Fixed(if compact { 180.0 } else { 260.0 })),
-            |chart, (stat, value)| chart.push(stat_short(*stat), f32::from(*value)),
-        );
+    let chart = stats.iter().fold(
+        BarChart::new()
+            .column_spacing(3.)
+            .padding(3.)
+            .height(Length::Fixed(if compact { 180.0 } else { 260.0 })),
+        |chart, (stat, value)| chart.push(stat_short(*stat), f32::from(*value)),
+    );
 
     // Table: stat | base | min | max | (EVs, hidden when compact)
     let mut rows = vec![row(
@@ -71,13 +69,23 @@ fn base_stats(ctx: Ctx<'_>, layout: Layout) -> Element<'_, Message> {
     )];
     for ((stat, base), (_, ev)) in stats.iter().zip(pokemon.ev_yield.values()) {
         let (min, max) = stat_range_at_100(*stat, *base, pokemon.name.as_str());
-        let name = if compact { stat_short(*stat) } else { stat.label() };
+        let name = if compact {
+            stat_short(*stat)
+        } else {
+            stat.label()
+        };
         rows.push(row(
             name,
             base.to_string(),
             min.to_string(),
             max.to_string(),
-            (!compact).then(|| if ev > 0 { format!("+{ev}") } else { String::new() }),
+            (!compact).then(|| {
+                if ev > 0 {
+                    format!("+{ev}")
+                } else {
+                    String::new()
+                }
+            }),
             false,
         ));
     }
@@ -128,46 +136,6 @@ fn row<'a>(
     widget::row::with_children(cells).spacing(8).into()
 }
 
-/// Damage taken from each attacking type, grouped by multiplier.
-fn type_defenses(ctx: Ctx<'_>) -> Element<'_, Message> {
-    let types: Vec<PokemonType> = ctx.pokemon.types.iter().copied().collect();
-    let groups: [(f32, String); 5] = [
-        (4.0, fl!("weak-4x")),
-        (2.0, fl!("weak-2x")),
-        (0.5, fl!("resist-half")),
-        (0.25, fl!("resist-quarter")),
-        (0.0, fl!("immune")),
-    ];
-    let mut rows: Vec<Element<'_, Message>> = Vec::new();
-    for (multiplier, label) in groups {
-        let matching: Vec<Element<'_, Message>> = PokemonType::ALL
-            .iter()
-            .filter(|attacker| {
-                (ctx.dex.effectiveness(**attacker, &types) - multiplier).abs() < 0.01
-            })
-            .map(|t| type_badge(*t))
-            .collect();
-        if matching.is_empty() {
-            continue;
-        }
-        rows.push(
-            widget::column::with_children(vec![
-                text::heading(label).into(),
-                widget::flex_row(matching)
-                    .row_spacing(6)
-                    .column_spacing(6)
-                    .into(),
-            ])
-            .spacing(6)
-            .into(),
-        );
-    }
-    card(
-        fl!("type-defenses"),
-        widget::column::with_children(rows).spacing(12),
-    )
-}
-
 fn past_types(ctx: Ctx<'_>, layout: Layout) -> Element<'_, Message> {
     let lines: Vec<Element<'_, Message>> = ctx
         .pokemon
@@ -176,7 +144,10 @@ fn past_types(ctx: Ctx<'_>, layout: Layout) -> Element<'_, Message> {
         .map(|past| {
             let label = text::body(fl!("types-until", generation = past.until.label()));
             let badges = widget::row::with_children(
-                past.types.iter().map(|t| type_badge(*t)).collect::<Vec<_>>(),
+                past.types
+                    .iter()
+                    .map(|t| type_badge(*t))
+                    .collect::<Vec<_>>(),
             )
             .spacing(6);
             if layout.compact() {

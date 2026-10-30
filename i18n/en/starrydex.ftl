@@ -24,10 +24,7 @@ theme = Theme
 match-desktop = Match desktop
 dark = Dark
 light = Light
-view-mode = View Mode
-view-mode-responsive = Responsive
-view-mode-manual = Manual
-pokemon-per-row = Pokémon per row
+modern-dex = Modern Dex
 pokemon-per-page = Pokémon per page
 
 # Pokédex section
@@ -52,11 +49,82 @@ data-info = Data: { $pokemon } Pokémon, { $species } species, { $moves } moves 
 home-pokemon = Pokémon
 home-types = Types
 home-items = Items
+home-moves = Moves
+moves-search-placeholder = Search moves by name
+moves-all-classes = All classes
+moves-all-generations = All generations
+moves-range = { $start }–{ $end } of { $total } moves
+moves-none = No moves
+moves-no-results = No moves found
+moves-no-results-hint = Try another search or remove some filters.
+moves-type = Type
+moves-class = Class
+moves-generation = Gen.
+moves-machines = Taught by machine
+moves-learned-by = Learned by ({ $count })
+move-details = Move
+home-compare = Compare
+home-team = Team
+home-team-count = Team ({ $count }/6)
+favorite-add = Add to favorites
+favorite-remove = Remove from favorites
+favorites-only = Only favorites
+team-add = Add to team
+team-remove = Remove from team
+team-full = The team is full
+compare-with = Compare
+team-title = My team
+team-count = { $count } of 6 members
+team-add-slot = + Add from the Pokédex
+team-coverage = Team defensive coverage
+team-coverage-weak = weak
+team-coverage-resist = resist or immune
+team-coverage-empty = Add members to see the coverage.
+team-coverage-ok = No serious weak spots.
+team-coverage-holes = Weak spots: { $types } (2 or more members weak and none resists).
+compare-title = Comparator
+compare-search = Search Pokémon…
+compare-pick = Pick a Pokémon
+compare-best-type = Its best type against { $name }: { $multiplier }
+compare-swap = Swap sides
+vs = VS
+versus-title = Battle
+versus-attacks = { $attacker } attacks { $defender }
+versus-stab = With its own types
+versus-lean-physical = Better physical: Attack { $attack } against Defense { $defense }.
+versus-lean-special = Better special: Sp. Atk { $attack } against Sp. Def { $defense }.
+versus-best-moves = Best moves it can learn
+versus-no-moves = None of its damaging moves affects { $defender }.
+versus-threats = Super effective types of { $defender }
+versus-threats-none = None of its types is super effective.
+versus-hits = { $hits ->
+    [one] 1 hit
+   *[other] { $hits } hits
+}
+versus-hits-turns = { $hits ->
+    [one] 1 hit
+   *[other] { $hits } hits
+} ({ $turns } turns)
+versus-charge = charges first
+versus-recharge = must recharge
+versus-winner = { $name } has the edge: it knocks { $other } out in { $hits } with { $attack }.
+versus-winner-faster = { $name } has the edge: both need { $hits }, but it moves first.
+versus-loser = { $name } would need { $hits } with { $attack }.
+versus-loser-none = { $name } can't damage { $other }.
+versus-even = Even fight: both need { $hits } and have the same Speed.
+versus-nobody = Neither can damage the other.
+versus-faster = { $name } moves first (Speed { $speed } against { $other }).
+versus-speed-tie = Same Speed ({ $speed }): who moves first is random.
+versus-assumptions = Estimate at level { $level } with perfect IVs, no EVs, a neutral nature, no items, abilities or critical hits, using the move each one can learn in any game that knocks the other out in the fewest turns (charging and recharging take an extra turn).
+all-types = All
+select-pokemon = Select a Pokémon
+select-pokemon-hint = Pick one from the list, browse with ↑ ↓ or press / to search.
 
 ## Main page: items
 
 items-search-placeholder = Search items by name
 items-all-pockets = All pockets
+items-name = Name
 items-range = { $start }–{ $end } of { $total } items
 items-none = No items
 items-no-results = No items found
@@ -83,6 +151,12 @@ type-chart-legend-not-very = ½× not very effective
 type-chart-legend-none = 0× no effect
 type-chart-legend-neutral = 1× normal damage
 type-chart-none = None
+type-matchups-title = Matchups
+type-chart-hover = { $attacker } → { $defender }: { $multiplier }
+type-chart-hover-hint = Hover a cell to see the matchup.
+type-calculator = Defensive calculator
+type-calculator-hint = Pick up to two types to see what hurts them.
+type-calculator-clear = Clear
 type-matchups = { $name } matchups
 type-offense = Attacking
 type-defense = Defending
@@ -93,7 +167,8 @@ no-effect-against = Has no effect on
 ## Main page: Pokémon list
 
 # Toolbar: search and sorting
-search-placeholder = Search by name or number
+search-placeholder = Name or number…
+sort-by = Sort by
 sort-number = Number
 sort-name = Name
 reverse-order = Reverse order
@@ -209,15 +284,19 @@ base = Base
 min-100 = Min
 max-100 = Max
 total = Total
+base-total = Base total
 stat-range-hint = Min/Max: stat range at level 100 (0 IVs/0 EVs/hindering nature to 31 IVs/252 EVs/beneficial nature).
 
 # Type defenses card
 type-defenses = Type defenses
-weak-4x = Takes 4× damage from
 weak-2x = Takes 2× damage from
 resist-half = Takes ½ damage from
-resist-quarter = Takes ¼ damage from
 immune = Immune to
+very-weak = Very weak
+weak = Weak
+resists = Resists
+very-resistant = Very resistant
+immune-label = Immune
 
 # Previous types card
 past-types = Previous types

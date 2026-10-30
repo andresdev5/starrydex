@@ -11,7 +11,6 @@ support = Apoiar
 <#-- Appearance -->
 appearance = Aparência
 theme = Tema
-pokemon-per-row = Pokémon por linha
 match-desktop = Correspondência de desktop
 dark = Escuro
 light = Claro

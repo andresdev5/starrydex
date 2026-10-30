@@ -7,6 +7,7 @@
 //! plus a one-time validation pass: Pokémon data is read straight from the mapped file and only
 //! the pages that are actually touched end up in memory.
 
+use std::collections::BTreeSet;
 use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -17,11 +18,11 @@ use anywho::{Error, anywho};
 use memmap2::{Mmap, MmapOptions};
 use rkyv::rancor;
 use starrydex_model::{
-    ArchivedItem, ArchivedPokedex, ArchivedPokemon, ArchivedSpecies, FORMAT_VERSION, Lang,
-    SpriteKind, item_sprite_rel_path,
+    ArchivedItem, ArchivedPokedex, ArchivedPokemon, ArchivedSpecies, DamageClass, FORMAT_VERSION,
+    Generation, Lang, PokemonType, SpriteKind, item_sprite_rel_path,
 };
 
-use crate::app::utils::filters::{Category, Filters, SortBy};
+use crate::app::utils::filters::{Category, Filters, MoveSort, SortBy};
 use crate::config::TypeFilteringMode;
 
 pub const APP_ID: &str = "dev.mariinkys.StarryDex";
@@ -260,6 +261,65 @@ impl StarryCore {
         results
     }
 
+    /// Runs search, filters and sorting over every move. Returns indices into
+    /// [`ArchivedPokedex::moves`].
+    pub fn move_query(&self, query: &MoveQuery) -> Vec<u32> {
+        let moves = &self.dex().moves;
+        let needle = fold(query.search.trim());
+        let mut results: Vec<u32> = moves
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| query.types.is_empty() || query.types.contains(&m.move_type))
+            .filter(|(_, m)| query.class.is_none_or(|c| m.damage_class == c))
+            .filter(|(_, m)| query.generation.is_none_or(|g| m.generation == g))
+            .filter(|(_, m)| {
+                needle.is_empty()
+                    || fold(m.display.get(query.lang)).contains(&needle)
+                    || fold(&m.display.en).contains(&needle)
+                    || m.name.as_str().replace('-', " ").contains(&needle)
+            })
+            .map(|(index, _)| index as u32)
+            .collect();
+
+        // Name first, so every other order keeps names alphabetical within ties.
+        results.sort_by_cached_key(|&i| fold(moves[i as usize].display.get(query.lang)));
+        let number = |value: Option<&u8>| std::cmp::Reverse(value.map_or(-1, |v| i16::from(*v)));
+        match query.sort {
+            MoveSort::Name => {}
+            MoveSort::Type => results.sort_by_key(|&i| moves[i as usize].move_type),
+            MoveSort::Class => results.sort_by_key(|&i| moves[i as usize].damage_class),
+            MoveSort::Power => results.sort_by_key(|&i| number(moves[i as usize].power.as_ref())),
+            MoveSort::Accuracy => {
+                results.sort_by_key(|&i| number(moves[i as usize].accuracy.as_ref()));
+            }
+            MoveSort::Pp => results.sort_by_key(|&i| number(moves[i as usize].pp.as_ref())),
+            MoveSort::Generation => results.sort_by_key(|&i| moves[i as usize].generation),
+        }
+        if query.descending {
+            results.reverse();
+        }
+        results
+    }
+
+    /// Indices (into [`ArchivedPokedex::pokemon`]) of the Pokémon that learn the move with
+    /// the given id in any game, alternate forms only when `show_forms`.
+    pub fn learners(&self, move_id: u32, show_forms: bool) -> Vec<u32> {
+        let dex = self.dex();
+        let mut learners: Vec<u32> = dex
+            .pokemon
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.is_default || show_forms)
+            .filter(|(_, p)| p.moves.iter().any(|m| m.move_id.to_native() == move_id))
+            .map(|(index, _)| index as u32)
+            .collect();
+        learners.sort_by_key(|&i| {
+            let p = &dex.pokemon[i as usize];
+            (p.species_id.to_native(), p.id.to_native())
+        });
+        learners
+    }
+
     /// Absolute path of an item icon, if the item has one.
     pub fn item_sprite(&self, item: &ArchivedItem) -> Option<PathBuf> {
         item.has_sprite
@@ -286,6 +346,18 @@ impl StarryCore {
         results.sort_by_cached_key(|&i| fold(items[i as usize].display.get(lang)));
         results
     }
+}
+
+/// Everything that decides which moves the move list shows, and in which order.
+pub struct MoveQuery<'a> {
+    pub search: &'a str,
+    /// Move types to show (all when empty)
+    pub types: &'a BTreeSet<PokemonType>,
+    pub class: Option<DamageClass>,
+    pub generation: Option<Generation>,
+    pub sort: MoveSort,
+    pub descending: bool,
+    pub lang: Lang,
 }
 
 /// Everything that decides which Pokémon the list shows, and in which order.

@@ -2,24 +2,30 @@
 
 //! Searchable list of every item; the selected one is shown in the context drawer.
 
-use std::borrow::Cow;
-
 use cosmic::iced::core::text::LineHeight;
-use cosmic::iced::{Alignment, Length, Pixels};
+use cosmic::iced::{Alignment, Background, Border, Length, Pixels};
 use cosmic::widget::{self, button, container, text};
 use cosmic::{Element, theme};
 use starrydex_model::{ArchivedItem, SpriteKind};
 
 use crate::app::core::StarryCore;
-use crate::app::pages::common::{card, info_row, sprite};
+use crate::app::pages::common::{card, hex, info_row, sprite};
 use crate::app::utils::PaginationAction;
 use crate::app::utils::presentation::data_lang;
 use crate::app::{AppModel, ItemsInput, Message, Ready, page_count};
 use crate::{fl, icons};
 
-const CARD_WIDTH: f32 = 136.0;
-const CARD_HEIGHT: f32 = 120.0;
+/// Narrower than this, the effect column is left out (it is still in the item drawer).
+const EFFECT_MIN_WIDTH: f32 = 760.0;
+const ICON_WIDTH: f32 = 36.0;
+const POCKET_WIDTH: f32 = 150.0;
+const PRICE_WIDTH: f32 = 100.0;
+/// Tag colors of the bag pockets, in pocket order.
+const POCKET_COLORS: [u32; 8] = [
+    0xDEDBCD, 0xC4E6B5, 0xF3C1B6, 0xCFE0F2, 0xEBD9A6, 0xF8D0E8, 0xDCCDEB, 0xC1EDEA,
+];
 pub const ITEMS_SCROLL_ID: &str = "item-list";
+pub const SEARCH_ID: &str = "item-search";
 
 /// State of the items section.
 #[derive(Debug, Default)]
@@ -72,50 +78,33 @@ pub fn view<'a>(app: &'a AppModel, ready: &'a Ready) -> Element<'a, Message> {
     let start = page * per_page;
     let end = (start + per_page).min(list.results.len());
 
-    let toolbar = widget::row::with_children(vec![
-        widget::search_input(fl!("items-search-placeholder"), &list.search)
-            .on_input(|v| Message::Items(ItemsInput::Search(v)))
-            .on_clear(Message::Items(ItemsInput::Search(String::new())))
-            .line_height(LineHeight::Absolute(Pixels(30.0)))
-            .width(Length::Fill)
-            .into(),
-        widget::dropdown(
-            Cow::Borrowed(list.pocket_labels.as_slice()),
-            list.pocket_ids.iter().position(|id| *id == list.pocket),
-            |i| Message::Items(ItemsInput::Pocket(i)),
-        )
-        .into(),
-    ])
-    .spacing(spacing.space_xxs)
-    .align_y(Alignment::Center)
-    .width(Length::Fill);
+    let search = widget::search_input(fl!("items-search-placeholder"), &list.search)
+        .id(widget::Id::new(SEARCH_ID))
+        .on_input(|v| Message::Items(ItemsInput::Search(v)))
+        .on_clear(Message::Items(ItemsInput::Search(String::new())))
+        .line_height(LineHeight::Absolute(Pixels(30.0)))
+        .width(Length::Fill);
 
-    let core = &ready.core;
-    let dex = core.dex();
-    let visible = &list.results[start..end];
-    let content: Element<'a, Message> = if visible.is_empty() {
-        widget::column::with_children(vec![
-            text::title3(fl!("items-no-results")).into(),
-            text::body(fl!("items-no-results-hint")).into(),
-        ])
-        .spacing(12)
-        .align_x(Alignment::Center)
-        .padding(48)
-        .width(Length::Fill)
-        .into()
-    } else {
-        widget::flex_row(
-            visible
-                .iter()
-                .map(|&index| item_card(ready, &dex.items[index as usize]))
-                .collect(),
-        )
-        .row_spacing(spacing.space_xs)
-        .column_spacing(spacing.space_xs)
-        .justify_content(widget::JustifyContent::Center)
-        .width(Length::Fill)
-        .into()
-    };
+    let active_pocket = list.pocket_ids.iter().position(|id| *id == list.pocket);
+    let pockets = widget::flex_row(
+        list.pocket_labels
+            .iter()
+            .enumerate()
+            .map(|(i, label)| {
+                button::text(label.as_str())
+                    .class(if active_pocket == Some(i) {
+                        theme::Button::Suggested
+                    } else {
+                        theme::Button::Text
+                    })
+                    .on_press(Message::Items(ItemsInput::Pocket(i)))
+                    .into()
+            })
+            .collect(),
+    )
+    .row_spacing(4)
+    .column_spacing(4)
+    .width(Length::Fill);
 
     let summary = if list.results.is_empty() {
         fl!("items-none")
@@ -146,47 +135,173 @@ pub fn view<'a>(app: &'a AppModel, ready: &'a Ready) -> Element<'a, Message> {
     .spacing(spacing.space_s)
     .align_y(Alignment::Center);
 
-    widget::column::with_children(vec![
-        toolbar.into(),
-        widget::scrollable(container(content).padding([spacing.space_xs, 0]))
+    let visible = &list.results[start..end];
+    let table = widget::responsive(move |size| {
+        let show_effect = size.width >= EFFECT_MIN_WIDTH;
+        if visible.is_empty() {
+            return widget::column::with_children(vec![
+                text::title3(fl!("items-no-results")).into(),
+                text::body(fl!("items-no-results-hint")).into(),
+            ])
+            .spacing(12)
+            .align_x(Alignment::Center)
+            .padding(48)
+            .width(Length::Fill)
+            .into();
+        }
+        let dex = ready.core.dex();
+        let rows = visible
+            .iter()
+            .map(|&index| item_row(ready, &dex.items[index as usize], show_effect))
+            .collect::<Vec<_>>();
+        widget::column::with_children(vec![
+            header_row(show_effect),
+            widget::scrollable(widget::column::with_children(rows).spacing(2).padding([
+                0,
+                spacing.space_m,
+                0,
+                0,
+            ]))
             .id(ITEMS_SCROLL_ID)
             .height(Length::Fill)
             .width(Length::Fill)
             .into(),
+        ])
+        .spacing(spacing.space_xxs)
+        .into()
+    });
+
+    widget::column::with_children(vec![
+        search.into(),
+        pockets.into(),
+        table.into(),
         footer.into(),
     ])
-    .spacing(spacing.space_xxs)
+    .spacing(spacing.space_xs)
     .width(Length::Fill)
     .into()
 }
 
-fn item_card<'a>(ready: &'a Ready, item: &'a ArchivedItem) -> Element<'a, Message> {
+/// Column titles of the item table.
+fn header_row<'a>(show_effect: bool) -> Element<'a, Message> {
+    let title = |label: String| text::caption_heading(label);
+    let mut cells: Vec<Element<'a, Message>> = vec![
+        widget::Space::new().width(Length::Fixed(ICON_WIDTH)).into(),
+        title(fl!("items-name"))
+            .width(Length::FillPortion(3))
+            .into(),
+        title(fl!("item-pocket"))
+            .width(Length::Fixed(POCKET_WIDTH))
+            .into(),
+    ];
+    if show_effect {
+        cells.push(
+            title(fl!("item-effect"))
+                .width(Length::FillPortion(6))
+                .into(),
+        );
+    }
+    cells.push(
+        title(fl!("item-cost"))
+            .width(Length::Fixed(PRICE_WIDTH))
+            .align_x(Alignment::End)
+            .into(),
+    );
+    container(
+        widget::row::with_children(cells)
+            .spacing(12)
+            .align_y(Alignment::Center),
+    )
+    .padding([6, 8 + theme::active().cosmic().spacing.space_m, 6, 8])
+    .width(Length::Fill)
+    .class(theme::Container::Card)
+    .into()
+}
+
+fn item_row<'a>(
+    ready: &'a Ready,
+    item: &'a ArchivedItem,
+    show_effect: bool,
+) -> Element<'a, Message> {
     let lang = data_lang();
-    let pocket = ready
-        .core
-        .dex()
-        .item_pocket(item.pocket_id.to_native())
+    let dex = ready.core.dex();
+    let pocket_id = item.pocket_id.to_native();
+    let pocket = dex
+        .item_pocket(pocket_id)
         .map(|p| p.display.get(lang))
         .unwrap_or_default();
-    let column = widget::column::with_children(vec![
-        sprite(ready.core.item_sprite(item), 48.0),
-        text::heading(item.display.get(lang))
-            .align_x(Alignment::Center)
-            .wrapping(cosmic::iced::core::text::Wrapping::WordOrGlyph)
-            .into(),
-        text::caption(pocket).into(),
-    ])
-    .spacing(4)
-    .width(Length::Fill)
-    .align_x(Alignment::Center);
+    let color = dex
+        .item_pockets
+        .iter()
+        .position(|p| p.id.to_native() == pocket_id)
+        .map_or(POCKET_COLORS[0], |i| POCKET_COLORS[i % POCKET_COLORS.len()]);
+    let price = match item.cost.as_ref().map(|c| c.to_native()) {
+        Some(cost) if cost > 0 => fl!("item-cost-value", cost = cost),
+        _ => "—".to_string(),
+    };
 
-    button::custom(column)
-        .width(Length::Fixed(CARD_WIDTH))
-        .height(Length::Fixed(CARD_HEIGHT))
-        .padding(6)
-        .selected(ready.items.selected == Some(item.id.to_native()))
-        .on_press(Message::Items(ItemsInput::Open(item.id.to_native())))
-        .class(theme::Button::IconVertical)
+    let mut cells: Vec<Element<'a, Message>> = vec![
+        container(sprite(ready.core.item_sprite(item), 30.0))
+            .width(Length::Fixed(ICON_WIDTH))
+            .align_x(Alignment::Center)
+            .into(),
+        text::heading(item.display.get(lang))
+            .width(Length::FillPortion(3))
+            .into(),
+        container(pocket_tag(pocket, color))
+            .width(Length::Fixed(POCKET_WIDTH))
+            .into(),
+    ];
+    if show_effect {
+        // Effects are only in English: prefer the description when it is in the UI language.
+        let effect = if item.short_effect.has(lang) || !item.flavor.has(lang) {
+            item.short_effect.get(lang)
+        } else {
+            item.flavor.get(lang)
+        };
+        let effect = if effect.is_empty() {
+            item.flavor.get(lang)
+        } else {
+            effect
+        };
+        cells.push(
+            text::body(effect.replace('\n', " "))
+                .width(Length::FillPortion(6))
+                .into(),
+        );
+    }
+    cells.push(
+        text::body(price)
+            .width(Length::Fixed(PRICE_WIDTH))
+            .align_x(Alignment::End)
+            .into(),
+    );
+
+    button::custom(
+        widget::row::with_children(cells)
+            .spacing(12)
+            .align_y(Alignment::Center),
+    )
+    .width(Length::Fill)
+    .padding([6, 8])
+    .selected(ready.items.selected == Some(item.id.to_native()))
+    .on_press(Message::Items(ItemsInput::Open(item.id.to_native())))
+    .class(theme::Button::IconVertical)
+    .into()
+}
+
+fn pocket_tag<'a>(label: &'a str, color: u32) -> Element<'a, Message> {
+    container(text::caption(label))
+        .padding([2, 8])
+        .class(theme::Container::custom(move |_| container::Style {
+            background: Some(Background::Color(hex(color))),
+            text_color: Some(hex(0x141A26)),
+            border: Border {
+                radius: 4.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }))
         .into()
 }
 

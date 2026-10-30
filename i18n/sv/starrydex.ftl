@@ -11,11 +11,7 @@ support = Support
 <#-- Utseende -->
 appearance = Utseende
 theme = Tema 
-pokemon-per-row = Pokémon per rad
 pokemon-per-page = Pokémon per sida
-view-mode = Visningsläge
-view-mode-manual = Manuell
-view-mode-responsive = Responsiv
 match-desktop = Matcha skrivbordet
 dark = Mörkt
 light = Ljust

@@ -8,11 +8,7 @@ support = Podpora
 <#-- Appearance -->
 appearance = Vzhled
 theme = Motiv
-pokemon-per-row = Počet Pokémonů na řádek
 pokemon-per-page = Počet Pokémonů na stránku
-view-mode = Režim zobrazení
-view-mode-manual = Ruční
-view-mode-responsive = Responzivní
 match-desktop = Podle systému
 dark = Tmavý
 light = Světlý

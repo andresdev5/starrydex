@@ -19,6 +19,8 @@ pub enum ContextPage {
     FiltersPage,
     /// Details of the item selected in the items section
     ItemDetails,
+    /// Details of the move selected in the moves section
+    MoveDetails,
 }
 
 impl ContextPage {
@@ -48,6 +50,16 @@ impl ContextPage {
                     Message::ToggleContextPage(ContextPage::FiltersPage),
                 )
                 .title(fl!("filters-page"))
+            }
+            ContextPage::MoveDetails => {
+                let State::Ready(ready) = &app_model.state else {
+                    return None;
+                };
+                context_drawer::context_drawer(
+                    crate::app::pages::move_list::details(ready),
+                    Message::ToggleContextPage(ContextPage::MoveDetails),
+                )
+                .title(fl!("move-details"))
             }
             ContextPage::ItemDetails => {
                 let State::Ready(ready) = &app_model.state else {

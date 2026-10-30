@@ -14,30 +14,30 @@ const CONFIG_VERSION: u64 = 3;
 #[version = 3]
 pub struct StarryConfig {
     pub app_theme: AppTheme,
-    pub view_mode: ViewMode,
     pub pokemon_per_page: usize,
     pub type_filtering_mode: TypeFilteringMode,
     /// Also list alternate forms (megas, regional forms...) as separate entries.
     pub show_forms: bool,
     /// Volume of the Pokémon cries, 0–100 (%).
     pub cry_volume: u8,
+    /// Ids of the Pokémon marked as favorite.
+    pub favorites: Vec<u32>,
+    /// Ids of the Pokémon in the team, in slot order (at most [`TEAM_SIZE`]).
+    pub team: Vec<u32>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
-pub enum ViewMode {
-    Manual { pokemon_per_row: usize },
-    Responsive,
-}
+pub const TEAM_SIZE: usize = 6;
 
 impl Default for StarryConfig {
     fn default() -> Self {
         Self {
             app_theme: Default::default(),
-            view_mode: ViewMode::Responsive,
             type_filtering_mode: Default::default(),
             pokemon_per_page: 60,
             show_forms: false,
             cry_volume: 5,
+            favorites: Vec::new(),
+            team: Vec::new(),
         }
     }
 }
@@ -66,6 +66,7 @@ pub enum AppTheme {
     Light,
     #[default]
     System,
+    ModernDex,
 }
 
 impl AppTheme {
@@ -74,6 +75,7 @@ impl AppTheme {
             Self::Dark => theme::Theme::dark(),
             Self::Light => theme::Theme::light(),
             Self::System => theme::system_preference(),
+            Self::ModernDex => crate::themes::modern_dex(),
         }
     }
 }
@@ -90,10 +92,6 @@ pub enum TypeFilteringMode {
 pub enum ConfigInput {
     /// Update the application theme
     UpdateTheme(usize),
-    /// Update the current view mode
-    UpdateViewMode(usize),
-    /// Update the pokemon per row setting
-    UpdatePokemonPerRow(u16),
     /// Update the pokemon per page setting
     UpdatePokemonPerPage(u16),
     /// Update the type filtering mode setting

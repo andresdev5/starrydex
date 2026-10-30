@@ -11,7 +11,6 @@ support = Ondersteuning
 <#-- Appearance -->
 appearance = Weergave
 theme = Thema
-pokemon-per-row = Pokémon per rij
 match-desktop = Systeemstandaard
 dark = Donker
 light = Licht

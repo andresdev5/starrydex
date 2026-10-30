@@ -10,6 +10,7 @@ mod i18n;
 mod icons;
 mod images;
 mod key_binds;
+mod themes;
 
 fn main() -> cosmic::iced::Result {
     // Get the system's preferred languages.

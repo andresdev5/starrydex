@@ -5,10 +5,12 @@ use std::borrow::Cow;
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget::{self, button, container, text};
 use cosmic::{Element, theme};
-use starrydex_model::{ArchivedSpecies, CryKind, Lang, SpriteKind, item_sprite_rel_path};
+use starrydex_model::{
+    ArchivedSpecies, CryKind, Lang, PokemonType, SpriteKind, item_sprite_rel_path,
+};
 
 use super::{Ctx, Layout, field, grid};
-use crate::app::pages::common::{card, empty, sprite, tag};
+use crate::app::pages::common::{card, defense_rows, empty, fact, sprite, stat_bar, tag};
 use crate::app::utils::presentation::{
     Label, capture_chance, format_height, format_weight, gender_split, stat_short, uppercase_first,
 };
@@ -18,24 +20,23 @@ use crate::{fl, icons};
 pub fn view<'a>(ctx: Ctx<'a>, layout: Layout) -> Element<'a, Message> {
     let spacing = theme::active().cosmic().spacing;
 
-    let mut cards = vec![profile(ctx, layout), training(ctx, layout)];
     let top: Element<'a, Message> = if layout.narrow() {
-        cards.insert(0, abilities(ctx));
-        widget::column::with_children(vec![hero(ctx, layout), pokedex_entry(ctx, layout)])
+        widget::column::with_children(vec![hero(ctx, layout), base_stats(ctx)])
             .spacing(spacing.space_s)
             .into()
     } else {
-        widget::row::with_children(vec![
-            hero(ctx, layout),
-            widget::column::with_children(vec![pokedex_entry(ctx, layout), abilities(ctx)])
-                .spacing(spacing.space_s)
-                .width(Length::Fill)
-                .into(),
-        ])
-        .align_y(Alignment::Center)
-        .spacing(spacing.space_s)
-        .into()
+        widget::row::with_children(vec![hero(ctx, layout), base_stats(ctx)])
+            .align_y(Alignment::Center)
+            .spacing(spacing.space_s)
+            .into()
     };
+
+    let mut cards = vec![
+        pokedex_entry(ctx, layout),
+        abilities(ctx),
+        profile(ctx, layout),
+        training(ctx, layout),
+    ];
 
     if let Some(species) = ctx.species {
         cards.push(breeding(species, layout));
@@ -46,10 +47,98 @@ pub fn view<'a>(ctx: Ctx<'a>, layout: Layout) -> Element<'a, Message> {
     }
     cards.push(games(ctx));
 
-    widget::column::with_children(vec![top, grid(cards, layout.columns, spacing.space_s)])
-        .spacing(spacing.space_s)
-        .width(Length::Fill)
-        .into()
+    widget::column::with_children(vec![
+        top,
+        facts(ctx, layout),
+        type_defenses(ctx, layout),
+        grid(cards, layout.columns, spacing.space_s),
+    ])
+    .spacing(spacing.space_s)
+    .width(Length::Fill)
+    .into()
+}
+
+/// Base stats as segmented bars.
+fn base_stats(ctx: Ctx<'_>) -> Element<'_, Message> {
+    let stats = ctx.pokemon.stats.values();
+    let mut rows: Vec<Element<'_, Message>> = stats
+        .iter()
+        .map(|(stat, value)| {
+            widget::row::with_children(vec![
+                text::caption(stat_short(*stat))
+                    .width(Length::Fixed(56.0))
+                    .into(),
+                text::heading(value.to_string())
+                    .width(Length::Fixed(34.0))
+                    .align_x(Alignment::End)
+                    .into(),
+                stat_bar(*value),
+            ])
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .into()
+        })
+        .collect();
+    rows.push(
+        widget::row::with_children(vec![
+            text::caption(fl!("total"))
+                .width(Length::Fixed(56.0))
+                .into(),
+            text::heading(ctx.pokemon.stats.total().to_string())
+                .width(Length::Fixed(34.0))
+                .align_x(Alignment::End)
+                .into(),
+        ])
+        .spacing(8)
+        .into(),
+    );
+    card(
+        fl!("poke-stats"),
+        widget::column::with_children(rows).spacing(8),
+    )
+}
+
+/// Quick facts: height, weight, abilities and base stat total.
+fn facts(ctx: Ctx<'_>, layout: Layout) -> Element<'_, Message> {
+    let Ctx {
+        dex, pokemon, lang, ..
+    } = ctx;
+    let spacing = theme::active().cosmic().spacing;
+    let abilities: Vec<&str> = pokemon
+        .abilities
+        .iter()
+        .filter_map(|slot| dex.ability(slot.ability_id.to_native()))
+        .map(|ability| ability.display.get(lang))
+        .collect();
+    let tiles = vec![
+        fact(
+            fl!("height-label"),
+            format_height(pokemon.height.to_native()),
+        ),
+        fact(
+            fl!("weight-label"),
+            format_weight(pokemon.weight.to_native()),
+        ),
+        fact(fl!("pokemon-abilities"), abilities.join(" · ")),
+        fact(fl!("base-total"), pokemon.stats.total().to_string()),
+    ];
+    if layout.compact() {
+        grid(tiles, 2, spacing.space_xs)
+    } else {
+        widget::row::with_children(tiles)
+            .spacing(spacing.space_xs)
+            .width(Length::Fill)
+            .into()
+    }
+}
+
+/// Damage taken from each attacking type, grouped by multiplier.
+fn type_defenses(ctx: Ctx<'_>, layout: Layout) -> Element<'_, Message> {
+    let types: Vec<PokemonType> = ctx.pokemon.types.iter().copied().collect();
+    card(
+        fl!("type-defenses"),
+        defense_rows(ctx.dex, &types, layout.compact()),
+    )
 }
 
 /// Big sprite with shiny/back/female toggles and cry buttons.
@@ -231,18 +320,7 @@ fn profile(ctx: Ctx<'_>, layout: Layout) -> Element<'_, Message> {
         lang,
         ..
     } = ctx;
-    let mut rows = vec![
-        field(
-            layout,
-            fl!("height-label"),
-            text::body(format_height(pokemon.height.to_native())),
-        ),
-        field(
-            layout,
-            fl!("weight-label"),
-            text::body(format_weight(pokemon.weight.to_native())),
-        ),
-    ];
+    let mut rows = Vec::new();
     if let Some(species) = species {
         for (label, value) in [
             (fl!("habitat"), &species.habitat),

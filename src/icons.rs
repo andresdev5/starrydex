@@ -41,6 +41,18 @@ impl IconCache {
         bundle!("go-previous-symbolic", 18);
         bundle!("go-up-symbolic", 18);
         bundle!("go-down-symbolic", 18);
+        bundle!("view-list-symbolic", 16);
+        bundle!("view-grid-symbolic", 16);
+        bundle!("package-x-generic-symbolic", 16);
+        bundle!("moves-symbolic", 16);
+        bundle!("view-dual-symbolic", 16);
+        bundle!("view-dual-symbolic", 18);
+        bundle!("system-users-symbolic", 16);
+        bundle!("system-users-symbolic", 18);
+        bundle!("starred-symbolic", 16);
+        bundle!("starred-symbolic", 18);
+        bundle!("non-starred-symbolic", 18);
+        bundle!("window-close-symbolic", 18);
         bundle!("audio-speaker-symbolic", 18);
         bundle!("type-bug", 18);
         bundle!("type-dark", 18);

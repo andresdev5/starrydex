@@ -4,7 +4,7 @@ use cosmic::Element;
 use cosmic::widget::{self, text};
 
 use crate::app::{AppModel, Message, State};
-use crate::config::{AppTheme, ConfigInput, TypeFilteringMode, ViewMode};
+use crate::config::{AppTheme, ConfigInput, TypeFilteringMode};
 use crate::fl;
 
 pub fn view(app: &AppModel) -> Element<'_, Message> {
@@ -13,17 +13,14 @@ pub fn view(app: &AppModel) -> Element<'_, Message> {
         AppTheme::Dark => 1,
         AppTheme::Light => 2,
         AppTheme::System => 0,
+        AppTheme::ModernDex => 3,
     };
     let type_filter_mode_selected = match config.type_filtering_mode {
         TypeFilteringMode::Inclusive => 1,
         TypeFilteringMode::Exclusive => 0,
     };
-    let view_mode_selected = match config.view_mode {
-        ViewMode::Responsive => 0,
-        ViewMode::Manual { .. } => 1,
-    };
 
-    let mut appearance = widget::settings::section()
+    let appearance = widget::settings::section()
         .title(fl!("appearance"))
         .add(
             widget::settings::item::builder(fl!("theme")).control(widget::dropdown(
@@ -33,34 +30,15 @@ pub fn view(app: &AppModel) -> Element<'_, Message> {
             )),
         )
         .add(
-            widget::settings::item::builder(fl!("view-mode")).control(widget::dropdown(
-                &app.view_modes,
-                Some(view_mode_selected),
-                |v| Message::ConfigInput(ConfigInput::UpdateViewMode(v)),
-            )),
-        );
-    if let ViewMode::Manual { pokemon_per_row } = config.view_mode {
-        appearance = appearance.add(
-            widget::settings::item::builder(fl!("pokemon-per-row"))
-                .description(pokemon_per_row.to_string())
+            widget::settings::item::builder(fl!("pokemon-per-page"))
+                .description(config.pokemon_per_page.to_string())
                 .control(
-                    widget::slider(1..=10, pokemon_per_row as u16, |v| {
-                        Message::ConfigInput(ConfigInput::UpdatePokemonPerRow(v))
+                    widget::slider(10..=1500, config.pokemon_per_page as u16, |v| {
+                        Message::ConfigInput(ConfigInput::UpdatePokemonPerPage(v))
                     })
-                    .step(1u16),
+                    .step(10u16),
                 ),
         );
-    }
-    appearance = appearance.add(
-        widget::settings::item::builder(fl!("pokemon-per-page"))
-            .description(config.pokemon_per_page.to_string())
-            .control(
-                widget::slider(10..=1500, config.pokemon_per_page as u16, |v| {
-                    Message::ConfigInput(ConfigInput::UpdatePokemonPerPage(v))
-                })
-                .step(10u16),
-            ),
-    );
 
     let list = widget::settings::section()
         .title(fl!("pokedex-section"))

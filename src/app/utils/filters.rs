@@ -88,3 +88,16 @@ impl SortBy {
         Self::Weight,
     ];
 }
+
+/// Order of the move list. Numbers sort high → low unless reversed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MoveSort {
+    #[default]
+    Name,
+    Type,
+    Class,
+    Power,
+    Accuracy,
+    Pp,
+    Generation,
+}
