@@ -47,6 +47,29 @@ renew-cache-button = Renovar
 data-info = Datos: { $pokemon } Pokémon, { $species } especies, { $moves } movimientos · generados el { $date }
 
 
+## Main page: sections
+
+home-pokemon = Pokémon
+home-types = Tipos
+
+## Main page: type chart
+
+type-chart = Tabla de tipos
+type-chart-hint = Cada fila es el tipo que ataca y cada columna el que defiende. Elige un tipo a la izquierda para ver sus enfrentamientos.
+type-chart-select-hint = Elige un tipo en la tabla de abajo para ver contra qué es fuerte y contra qué es débil.
+type-chart-corner = Ataque ↓ · Defensa →
+type-chart-legend-super = 2× súper eficaz
+type-chart-legend-not-very = ½× poco eficaz
+type-chart-legend-none = 0× no afecta
+type-chart-legend-neutral = 1× daño normal
+type-chart-none = Ninguno
+type-matchups = Enfrentamientos de { $name }
+type-offense = Al atacar
+type-defense = Al defender
+super-effective-against = Hace 2× daño a
+not-very-effective-against = Hace ½ daño a
+no-effect-against = No afecta a
+
 ## Main page: Pokémon list
 
 # Toolbar: search and sorting

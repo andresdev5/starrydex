@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use cosmic::iced::core::text::LineHeight;
 use cosmic::iced::{Alignment, Length, Pixels};
-use cosmic::widget::{self, button, container, text};
+use cosmic::widget::{self, button, container, segmented_button, text};
 use cosmic::{Element, theme};
 use starrydex_model::{ArchivedPokemon, SpriteKind};
 
@@ -12,7 +12,7 @@ use crate::app::context_page::ContextPage;
 use crate::app::core::StarryCore;
 use crate::app::pages::common::{sprite, type_icon};
 use crate::app::utils::PaginationAction;
-use crate::app::utils::presentation::{data_lang, dex_number};
+use crate::app::utils::presentation::{Label, data_lang, dex_number};
 use crate::app::{AppModel, ListInput, Message, Ready, page_count};
 use crate::config::ViewMode;
 use crate::{fl, icons};
@@ -21,7 +21,56 @@ const CARD_WIDTH: f32 = 168.0;
 const CARD_HEIGHT: f32 = 168.0;
 pub const LIST_SCROLL_ID: &str = "pokemon-list";
 
-pub fn view<'a>(app: &'a AppModel, ready: &'a Ready) -> Element<'a, Message> {
+/// Sections of the main page, picked with the button group at the top.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HomeSection {
+    #[default]
+    Pokemon,
+    Types,
+}
+
+impl HomeSection {
+    pub const ALL: &'static [Self] = &[Self::Pokemon, Self::Types];
+}
+
+impl Label for HomeSection {
+    fn label(&self) -> String {
+        match self {
+            Self::Pokemon => fl!("home-pokemon"),
+            Self::Types => fl!("home-types"),
+        }
+    }
+}
+
+pub fn view<'a>(
+    app: &'a AppModel,
+    ready: &'a Ready,
+    sections: &'a segmented_button::SingleSelectModel,
+    section: HomeSection,
+) -> Element<'a, Message> {
+    let spacing = theme::active().cosmic().spacing;
+    let content = match section {
+        HomeSection::Pokemon => pokemon_list(app, ready),
+        HomeSection::Types => crate::app::pages::types::view(ready),
+    };
+    widget::column::with_children(vec![
+        container(
+            widget::segmented_control::horizontal(sections)
+                .on_activate(Message::HomeSection)
+                .width(Length::Fixed(320.0)),
+        )
+        .width(Length::Fill)
+        .align_x(Alignment::Center)
+        .into(),
+        content,
+    ])
+    .spacing(spacing.space_xxs)
+    .padding([spacing.space_xxs, spacing.space_s])
+    .width(Length::Fill)
+    .into()
+}
+
+fn pokemon_list<'a>(app: &'a AppModel, ready: &'a Ready) -> Element<'a, Message> {
     let spacing = theme::active().cosmic().spacing;
     let per_page = app.config.pokemon_per_page.max(1);
     let pages = page_count(ready.results.len(), per_page);
@@ -169,7 +218,6 @@ pub fn view<'a>(app: &'a AppModel, ready: &'a Ready) -> Element<'a, Message> {
         footer.into(),
     ])
     .spacing(spacing.space_xxs)
-    .padding([spacing.space_xxs, spacing.space_s])
     .width(Length::Fill)
     .into()
 }

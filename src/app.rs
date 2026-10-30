@@ -19,6 +19,7 @@ use crate::app::app_menu::MenuAction;
 use crate::app::context_page::ContextPage;
 use crate::app::core::{ListQuery, StarryCore};
 use crate::app::pages::details::{DetailTab, Details};
+use crate::app::pages::home::HomeSection;
 use crate::app::utils::presentation::{Label, data_lang};
 use crate::app::utils::{
     Category, Filters, PaginationAction, SortBy, play_audio_file, remove_dir_contents,
@@ -63,6 +64,8 @@ pub struct AppModel {
     sort_options: Vec<String>,
     /// Tabs of the Pokémon details page
     detail_tabs: segmented_button::SingleSelectModel,
+    /// Sections of the main page (Pokémon list, type chart)
+    home_sections: segmented_button::SingleSelectModel,
     /// Application State
     state: State,
 }
@@ -93,6 +96,8 @@ pub struct Ready {
     pub details: Option<Details>,
     /// Scroll position of the Pokémon list, restored when coming back from a details page
     pub list_scroll: AbsoluteOffset,
+    /// Type whose matchups are shown on the type chart page
+    pub selected_type: Option<PokemonType>,
 }
 
 /// Messages emitted by the application and its widgets.
@@ -120,6 +125,10 @@ pub enum Message {
     Back,
     /// A tab of the details page was selected
     DetailTab(segmented_button::Entity),
+    /// A section of the main page was selected
+    HomeSection(segmented_button::Entity),
+    /// A type was picked on the type chart page
+    SelectType(PokemonType),
     /// Callback after input on the Config [`ContextPage`]
     ConfigInput(ConfigInput),
     /// Input on the details page
@@ -211,6 +220,12 @@ impl cosmic::Application for AppModel {
         }
         detail_tabs.activate_position(0);
 
+        let mut home_sections = segmented_button::SingleSelectModel::default();
+        for section in HomeSection::ALL {
+            home_sections.insert().text(section.label()).data(*section);
+        }
+        home_sections.activate_position(0);
+
         let mut app = AppModel {
             core,
             context_page: ContextPage::default(),
@@ -224,6 +239,7 @@ impl cosmic::Application for AppModel {
             view_modes: vec![fl!("view-mode-responsive"), fl!("view-mode-manual")],
             sort_options: SortBy::ALL.iter().map(Label::label).collect(),
             detail_tabs,
+            home_sections,
             state: State::Loading,
         };
 
@@ -280,7 +296,9 @@ impl cosmic::Application for AppModel {
                     self.active_tab(),
                     &ready.results,
                 ),
-                None => pages::home::view(self, ready),
+                None => {
+                    pages::home::view(self, ready, &self.home_sections, self.active_section())
+                }
             },
         };
 
@@ -387,6 +405,7 @@ impl cosmic::Application for AppModel {
                     descending: false,
                     details: None,
                     list_scroll: AbsoluteOffset::default(),
+                    selected_type: None,
                 }));
                 self.refresh_results();
                 Task::none()
@@ -432,6 +451,24 @@ impl cosmic::Application for AppModel {
             }
             Message::DetailTab(entity) => {
                 self.detail_tabs.activate(entity);
+                Task::none()
+            }
+            Message::HomeSection(entity) => {
+                self.home_sections.activate(entity);
+                if self.active_section() == HomeSection::Pokemon
+                    && let State::Ready(ready) = &self.state
+                {
+                    // The list is rebuilt from scratch, so bring back where the user was.
+                    return Task::done(cosmic::action::app(Message::List(
+                        ListInput::RestoreScroll(ready.list_scroll),
+                    )));
+                }
+                Task::none()
+            }
+            Message::SelectType(t) => {
+                if let State::Ready(ready) = &mut self.state {
+                    ready.selected_type = Some(t);
+                }
                 Task::none()
             }
             Message::ConfigInput(input) => self.on_config_input(input),
@@ -563,6 +600,13 @@ impl AppModel {
             .unwrap_or_default()
     }
 
+    fn active_section(&self) -> HomeSection {
+        self.home_sections
+            .active_data::<HomeSection>()
+            .copied()
+            .unwrap_or_default()
+    }
+
     /// Re-runs the list query after search, filters, sorting or settings changed.
     fn refresh_results(&mut self) {
         let State::Ready(ready) = &mut self.state else {
@@ -593,6 +637,11 @@ impl AppModel {
             }
             Hotkey::Escape if in_details => self.update(Message::Back),
             Hotkey::Escape => Task::none(),
+            Hotkey::ArrowLeft | Hotkey::ArrowRight
+                if !in_details && self.active_section() == HomeSection::Types =>
+            {
+                Task::none()
+            }
             Hotkey::ArrowLeft | Hotkey::ArrowRight => {
                 let direction = if matches!(hotkey, Hotkey::ArrowLeft) {
                     PaginationAction::Back
