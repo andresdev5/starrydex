@@ -217,9 +217,73 @@ pub fn find_save(folder: &Path) -> Option<PathBuf> {
         .filter_map(Result::ok)
         .map(|user| {
             user.path()
-                .join("AppData/Local/PlatinumTogether/Game/save.bin")
+                .join(APP_DATA_FOLDER)
+                .join("Game")
+                .join("save.bin")
         })
         .find(|p| p.is_file())
+}
+
+/// Where Platinum Together keeps its data inside a Windows profile (also inside Wine prefixes).
+const APP_DATA_FOLDER: &str = "AppData/Local/PlatinumTogether";
+
+/// Looks for a Platinum Together save in the usual places: the local app data folder on
+/// Windows; on Linux, the Wine and Proton prefixes of `~/.wine`, Steam and the games folders.
+/// When several are found, the most recently saved one wins.
+pub fn detect_save() -> Option<PathBuf> {
+    candidate_folders()
+        .iter()
+        .filter_map(|folder| find_save(folder))
+        // Proton links the user's name to `steamuser`: show the real path.
+        .map(|save| save.canonicalize().unwrap_or(save))
+        .max_by_key(|save| std::fs::metadata(save).and_then(|m| m.modified()).ok())
+}
+
+#[cfg(windows)]
+fn candidate_folders() -> Vec<PathBuf> {
+    dirs::data_local_dir()
+        .map(|local| local.join("PlatinumTogether"))
+        .into_iter()
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn candidate_folders() -> Vec<PathBuf> {
+    let Some(home) = dirs::home_dir() else {
+        return Vec::new();
+    };
+    let mut prefixes = vec![home.join(".wine")];
+    // Proton keeps one prefix per Steam app.
+    for steam in [home.join(".local/share/Steam"), home.join(".steam/steam")] {
+        prefixes.extend(subfolders(&steam.join("steamapps/compatdata")).map(|app| app.join("pfx")));
+    }
+    // Lutris and umu put a prefix per game in the games folder; some setups use a `prefix`
+    // subfolder (like a game folder with its launcher next to the prefix).
+    for games in [
+        home.join("games"),
+        home.join("Games"),
+        home.join("Games/umu"),
+    ] {
+        for game in subfolders(&games) {
+            prefixes.push(game.join("prefix"));
+            prefixes.push(game);
+        }
+    }
+    prefixes
+        .iter()
+        .flat_map(|prefix| subfolders(&prefix.join("drive_c/users")))
+        .map(|user| user.join(APP_DATA_FOLDER))
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn subfolders(dir: &Path) -> impl Iterator<Item = PathBuf> + use<> {
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
 }
 
 /// The party and the PC boxes, each from its newest copy.

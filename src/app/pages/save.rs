@@ -55,6 +55,8 @@ pub struct SaveState {
     pub data: Save,
     /// Why the save couldn't be read
     pub error: Option<String>,
+    /// The save was found in the usual places, not in a folder the user picked
+    pub detected: bool,
     /// Pokémon shown in the details
     pub selected: Slot,
 }
@@ -96,7 +98,7 @@ impl SaveState {
 pub fn view<'a>(app: &'a AppModel, ready: &'a Ready) -> Element<'a, Message> {
     let spacing = theme::active().cosmic().spacing;
     let save = &ready.save;
-    let has_folder = !app.config.save_folder.is_empty();
+    let has_folder = !app.config.save_folder.is_empty() || save.path.is_some();
 
     let mut actions: Vec<Element<'a, Message>> = vec![
         text::title3(fl!("save-title")).into(),
@@ -131,6 +133,9 @@ pub fn view<'a>(app: &'a AppModel, ready: &'a Ready) -> Element<'a, Message> {
             .align_y(Alignment::Center)
             .into(),
         text::caption(match &save.path {
+            Some(path) if save.detected => {
+                fl!("save-source-detected", file = (path.display().to_string()))
+            }
             Some(path) => fl!("save-source", file = (path.display().to_string())),
             None => fl!("save-hint"),
         })

@@ -1003,43 +1003,48 @@ impl AppModel {
         Task::none()
     }
 
-    /// Reads the save in the remembered game folder (nothing if none was picked yet).
+    /// Reads the save in the remembered game folder, or the one found in the usual places when
+    /// no folder was picked yet.
     fn load_save(&mut self) {
         let State::Ready(ready) = &mut self.state else {
             return;
         };
-        if self.config.save_folder.is_empty() {
-            return;
-        }
-        let folder = std::path::Path::new(&self.config.save_folder);
         let mut save = SaveState {
             selected: ready.save.selected,
             ..SaveState::default()
         };
-        match gen4_save::find_save(folder) {
-            None => {
+        let path = if self.config.save_folder.is_empty() {
+            // Nothing found: keep the empty state that explains how to pick the folder.
+            let Some(path) = gen4_save::detect_save() else {
+                return;
+            };
+            save.detected = true;
+            path
+        } else {
+            let folder = std::path::Path::new(&self.config.save_folder);
+            let Some(path) = gen4_save::find_save(folder) else {
                 save.error = Some(fl!(
                     "save-not-found",
                     folder = (folder.display().to_string())
                 ));
+                ready.save = save;
+                return;
+            };
+            path
+        };
+        let file = path.display().to_string();
+        match std::fs::read(&path) {
+            Err(e) => {
+                save.error = Some(fl!("save-read-error", file = file, error = (e.to_string())));
             }
-            Some(path) => {
-                let file = path.display().to_string();
-                match std::fs::read(&path) {
-                    Err(e) => {
-                        save.error =
-                            Some(fl!("save-read-error", file = file, error = (e.to_string())));
-                    }
-                    Ok(bytes) => match gen4_save::read_save(&bytes) {
-                        Ok(data) => save.data = data,
-                        Err(gen4_save::SaveError::NotASave) => {
-                            save.error = Some(fl!("save-not-a-save", file = file));
-                        }
-                    },
+            Ok(bytes) => match gen4_save::read_save(&bytes) {
+                Ok(data) => save.data = data,
+                Err(gen4_save::SaveError::NotASave) => {
+                    save.error = Some(fl!("save-not-a-save", file = file));
                 }
-                save.path = Some(path);
-            }
+            },
         }
+        save.path = Some(path);
         ready.save = save;
     }
 
