@@ -10,9 +10,12 @@ mod i18n;
 mod icons;
 mod images;
 mod key_binds;
+mod system_icons;
 mod themes;
 
 fn main() -> cosmic::iced::Result {
+    system_icons::install();
+
     // Get the system's preferred languages.
     let requested_languages = i18n_embed::DesktopLanguageRequester::requested_languages();
 
