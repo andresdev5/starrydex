@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 
 /// Size of a Platinum save file.
 const SAVE_SIZE: usize = 0x80000;
-/// The general block is stored twice; the copy with the higher save counter is the newest.
+/// The general and storage blocks are stored twice; the copy with the higher save counter is
+/// the newest.
 const COPIES: [usize; 2] = [0x0, 0x40000];
 const GENERAL_BLOCK_SIZE: usize = 0xCF2C;
 const FOOTER_MAGIC: u32 = 0x2006_0623;
@@ -76,7 +77,9 @@ const BLOCK_ORDERS: [[u8; 4]; 24] = [
     [3, 2, 1, 0],
 ];
 /// Highest national dex number in generation 4.
-const LAST_SPECIES: u16 = 493;
+const LAST_DEX_SPECIES: u16 = 493;
+/// Highest national dex number: randomizers can bring Pokémon from later generations.
+const LAST_SPECIES: u16 = 1025;
 
 /// Stats in the order the app uses: HP, Attack, Defense, Sp. Atk, Sp. Def, Speed.
 pub type StatSpread<T> = [T; 6];
@@ -334,7 +337,7 @@ fn read_pokedex(save: &[u8], base: usize) -> Option<PokedexProgress> {
         return None;
     }
     let species = |flags: usize| -> Vec<u16> {
-        (1..=LAST_SPECIES)
+        (1..=LAST_DEX_SPECIES)
             .filter(|n| {
                 let bit = usize::from(n - 1);
                 save[flags + bit / 8] & (1 << (bit % 8)) != 0
@@ -380,12 +383,14 @@ fn read_extra_boxes(save: &[u8]) -> Vec<PcBox> {
 }
 
 /// Start of the copy (of the block whose footer is at `footer`) with the highest save counter.
+/// The footer starts with a counter shared by both blocks, then the block's own save counter;
+/// the shared one can be equal in both copies, so it only breaks ties.
 fn newest_copy(save: &[u8], footer: usize) -> Option<usize> {
     COPIES
         .iter()
         .copied()
         .filter(|&base| u32_at(save, base + footer + 0xC) == FOOTER_MAGIC)
-        .max_by_key(|&base| u32_at(save, base + footer))
+        .max_by_key(|&base| (u32_at(save, base + footer + 4), u32_at(save, base + footer)))
 }
 
 fn read_party(save: &[u8], base: usize) -> Vec<Member> {
@@ -394,13 +399,14 @@ fn read_party(save: &[u8], base: usize) -> Vec<Member> {
         if !(1..=PARTY_SIZE).contains(&count) {
             continue;
         }
-        let party: Option<Vec<Member>> = (0..count)
-            .map(|i| {
+        // A slot that can't be read is left out instead of hiding the whole party.
+        let party: Vec<Member> = (0..count)
+            .filter_map(|i| {
                 let start = base + offset + 4 + i * SLOT_SIZE;
                 decode(&save[start..start + SLOT_SIZE])
             })
             .collect();
-        if let Some(party) = party {
+        if !party.is_empty() {
             return party;
         }
     }
@@ -650,7 +656,9 @@ mod tests {
         let mut save = vec![0u8; SAVE_SIZE];
         for (copy, base) in COPIES.into_iter().enumerate() {
             let footer = base + GENERAL_BLOCK_SIZE;
-            save[footer..footer + 4].copy_from_slice(&counters[copy].to_le_bytes());
+            // The shared counter is the same in both copies; the block counter tells them apart.
+            save[footer..footer + 4].copy_from_slice(&1u32.to_le_bytes());
+            save[footer + 4..footer + 8].copy_from_slice(&counters[copy].to_le_bytes());
             save[footer + 0xC..footer + 0x10].copy_from_slice(&FOOTER_MAGIC.to_le_bytes());
         }
         // Only the newest copy gets the party.
@@ -743,6 +751,32 @@ mod tests {
         );
         assert_eq!(member.gender, Gender::Female);
         assert_eq!(member.nature, (0x1234_5678u32 % 25) as u8);
+    }
+
+    #[test]
+    fn keeps_pokemon_from_later_generations() {
+        let dwebble = Spec {
+            pid: 0x0BAD_F00D,
+            species: 557,
+            level: 14,
+            nickname: None,
+            moves: [1, 0, 0, 0],
+        };
+        let party = read_save(&save_with(&[buizel(), dwebble], [1, 0]))
+            .unwrap()
+            .party;
+        assert_eq!(
+            party.iter().map(|m| m.species).collect::<Vec<_>>(),
+            vec![418, 557]
+        );
+    }
+
+    #[test]
+    fn skips_only_the_unreadable_party_slot() {
+        let mut save = save_with(&[buizel(), buizel()], [1, 0]);
+        let second = PARTY_COUNT_OFFSETS[0] + 4 + SLOT_SIZE;
+        save[second + 20] ^= 0xFF;
+        assert_eq!(read_save(&save).unwrap().party.len(), 1);
     }
 
     #[test]
@@ -846,7 +880,7 @@ mod tests {
         let mut save = save_with(&[], [1, 0]);
         let footer = STORAGE_START + STORAGE_SIZE - 0x14;
         for (copy, counter) in COPIES.into_iter().zip([3u32, 4]) {
-            save[copy + footer..copy + footer + 4].copy_from_slice(&counter.to_le_bytes());
+            save[copy + footer + 4..copy + footer + 8].copy_from_slice(&counter.to_le_bytes());
             save[copy + footer + 0xC..copy + footer + 0x10]
                 .copy_from_slice(&FOOTER_MAGIC.to_le_bytes());
         }
