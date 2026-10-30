@@ -330,7 +330,10 @@ fn number(value: Option<&u8>) -> String {
 /// Effect in the UI language: the in-game description when the effect is only in English.
 fn localized_effect(attack: &ArchivedMove) -> &str {
     let lang = data_lang();
-    let effect = if attack.short_effect.has(lang) || !attack.flavor.has(lang) {
+    // Moves removed from the newest games only have a "can't be used" description there.
+    let flavor = attack.flavor.en.as_str();
+    let retired = flavor.contains("can’t be used") || flavor.contains("can't be used");
+    let effect = if attack.short_effect.has(lang) || !attack.flavor.has(lang) || retired {
         attack.short_effect.get(lang)
     } else {
         attack.flavor.get(lang)
