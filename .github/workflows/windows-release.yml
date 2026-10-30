@@ -1,0 +1,46 @@
+name: Windows build
+
+on:
+  # Builds the Windows zip and attaches it to every published release.
+  release:
+    types: [published]
+  # Manual runs only keep the zip as a workflow artifact.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Package
+        id: package
+        shell: pwsh
+        run: |
+          $name = "StarryDex-${{ github.event.release.tag_name || github.sha }}-windows-x86_64"
+          New-Item -ItemType Directory -Path $name | Out-Null
+          Copy-Item target/release/starrydex.exe "$name/StarryDex.exe"
+          Copy-Item LICENSE "$name/LICENSE.txt"
+          Compress-Archive -Path $name -DestinationPath "$name.zip"
+          "zip=$name.zip" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: ${{ steps.package.outputs.zip }}
+
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "${{ steps.package.outputs.zip }}" --clobber
